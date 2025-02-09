@@ -64,9 +64,9 @@ async def evaluate_application(message):
         reasons.append("❌ Must be 16 or older")
 
     # Grammar and sentence structure
-    sentences = content.split('.')
-    has_short_sentences = any(
-        len(s.strip().split()) < 3 for s in sentences if s.strip())
+   # Update the conditional check to ensure s is not None
+has_short_sentences = any(
+    len(s.strip().split()) < 3 for s in sentences if s and s.strip())
     if has_short_sentences:
         reasons.append("❌ Incomplete sentences detected")
 
