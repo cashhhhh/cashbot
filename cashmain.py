@@ -18,7 +18,7 @@ import psutil
 
 
 # Add these global variables at the top with other globals
-SALES_ROLE_ID = 112233445566778899  # Replace with your sales role ID
+SALES_ROLE_ID = 1103522760073945168  # Replace with your sales role ID
 ALERT_CHANNEL_ID = 1223077287457587221  # Your existing alert channel
 MIN_ONLINE_THRESHOLD = 5  # Minimum expected active sales members
 activity_log = {}
