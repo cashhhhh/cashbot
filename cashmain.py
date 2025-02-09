@@ -1498,7 +1498,7 @@ async def give_role(ctx, role_id: str, user: discord.Member):
         logging.error(error_msg)
         await notify_owner(f"Role assignment failed: {error_msg}")
 # Add this background task (place before on_ready event)
-@tasks.loop(minutes=5)
+
 async def monitor_sales_activity():
     try:
         channel = bot.get_channel(ALERT_CHANNEL_ID)
