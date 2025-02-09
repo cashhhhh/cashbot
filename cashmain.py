@@ -9,7 +9,7 @@ import re
 from datetime import datetime, timedelta
 from email.header import decode_header
 from flask import Flask, redirect, request
-import discord import tasks
+import discord 
 from discord.ext import commands
 import threading
 import asyncio
