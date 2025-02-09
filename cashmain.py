@@ -1375,6 +1375,56 @@ async def notifycash(ctx, *, message: str):
         logging.error(f"Error in notifycash command: {str(e)}")
         await ctx.send("❌ An error occurred while sending the notification.")
 
+@bot.command(name='copyroles')
+@commands.has_permissions(administrator=True)
+async def copy_roles(ctx):
+    """Copy all role IDs in the server (Owner only)"""
+    if str(ctx.author.id) not in OWNER_IDS:
+        await ctx.send("You do not have permission to use this command.")
+        return
+
+    roles = []
+    for role in ctx.guild.roles:
+        if role.name != "@everyone":
+            roles.append(f"{role.name}: {role.id}")
+    
+    roles_text = "\n".join(roles)
+    await ctx.send(f"```Role IDs:\n{roles_text}```")
+    logging.info(f"Roles copied by {ctx.author}")
+
+@bot.command(name='giverole')
+async def give_role(ctx, role_id: str, user: discord.Member):
+    """Give a specific role to a customer using role ID (Owner only)"""
+    if str(ctx.author.id) not in OWNER_IDS:
+        await ctx.send("You do not have permission to use this command.")
+        return
+
+    try:
+        role = discord.utils.get(ctx.guild.roles, id=int(role_id))
+        if not role:
+            await ctx.send("❌ Role not found")
+            return
+
+        await user.add_roles(role)
+        embed = discord.Embed(
+            title="✅ Role Added Successfully",
+            color=discord.Color.green(),
+            description=f"Given {role.name} to {user.mention}",
+            timestamp=datetime.now()
+        )
+        await ctx.send(embed=embed)
+        
+        # Log the action
+        logging.info(f"Role {role.id} given to {user.id} by {ctx.author.id}")
+        await notify_owner(f"Role assignment: {role.name} given to {user.name} by {ctx.author.name}")
+
+    except ValueError:
+        await ctx.send("❌ Invalid role ID format")
+    except discord.Forbidden:
+        await ctx.send("❌ Bot doesn't have permission to assign roles")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {str(e)}")
+        logging.error(f"Role assignment error: {str(e)}")
 
 if __name__ == '__main__':
     try:
