@@ -14,6 +14,7 @@ from discord.ext import commands
 import threading
 import asyncio
 import boto3  # AWS SDK for Python
+import psutil
 
 # Configuration
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
@@ -444,82 +445,103 @@ async def leaderboard(ctx):
 
 @bot.command(name='stats')
 async def stats(ctx):
-    """Show bot statistics including uptime and AWS monitoring info."""
-    if not start_time:
-        await ctx.send("Bot statistics not available yet.")
-        return
-
-    # Calculate uptime
-    uptime = time.time() - start_time
-    days = int(uptime // (24 * 3600))
-    hours = int((uptime % (24 * 3600)) // 3600)
-    minutes = int((uptime % 3600)) // 60
-    seconds = int(uptime % 60)
-
-    # Fetch AWS CloudWatch metrics
+    """Show detailed bot statistics including system resources"""
+    global start_time
+    
     try:
-        # Get CPU Utilization
-        cpu_response = cloudwatch.get_metric_statistics(
-            Namespace='AWS/EC2',
-            MetricName='CPUUtilization',
-            Dimensions=[{'Name': 'InstanceId', 'Value': os.getenv('AWS_INSTANCE_ID')}],
-            StartTime=datetime.utcnow() - timedelta(minutes=5),
-            EndTime=datetime.utcnow(),
-            Period=300,
-            Statistics=['Average']
-        )
-        cpu_usage = cpu_response['Datapoints'][0]['Average'] if cpu_response['Datapoints'] else 'N/A'
+        # Check if stats are available
+        if start_time is None:
+            await ctx.send("📊 Bot statistics are still initializing...")
+            return
 
-        # Get Memory Utilization
-        memory_response = cloudwatch.get_metric_statistics(
-            Namespace='System/Linux',
-            MetricName='MemoryUtilization',
-            Dimensions=[{'Name': 'InstanceId', 'Value': os.getenv('AWS_INSTANCE_ID')}],
-            StartTime=datetime.utcnow() - timedelta(minutes=5),
-            EndTime=datetime.utcnow(),
-            Period=300,
-            Statistics=['Average']
-        )
-        memory_usage = memory_response['Datapoints'][0]['Average'] if memory_response['Datapoints'] else 'N/A'
+        # Calculate uptime
+        uptime_seconds = time.time() - start_time
+        days, remainder = divmod(uptime_seconds, 86400)
+        hours, remainder = divmod(remainder, 3600)
+        minutes, seconds = divmod(remainder, 60)
 
-        # Get Network In/Out
-        network_in_response = cloudwatch.get_metric_statistics(
-            Namespace='AWS/EC2',
-            MetricName='NetworkIn',
-            Dimensions=[{'Name': 'InstanceId', 'Value': os.getenv('AWS_INSTANCE_ID')}],
-            StartTime=datetime.utcnow() - timedelta(minutes=5),
-            EndTime=datetime.utcnow(),
-            Period=300,
-            Statistics=['Average']
-        )
-        network_in = network_in_response['Datapoints'][0]['Average'] if network_in_response['Datapoints'] else 'N/A'
+        # Get system stats using psutil
+        cpu_percent = psutil.cpu_percent()
+        memory = psutil.virtual_memory()
+        disk = psutil.disk_usage('/')
+        net_io = psutil.net_io_counters()
+        temps = psutil.sensors_temperatures()
+        cpu_freq = psutil.cpu_freq()
 
-        network_out_response = cloudwatch.get_metric_statistics(
-            Namespace='AWS/EC2',
-            MetricName='NetworkOut',
-            Dimensions=[{'Name': 'InstanceId', 'Value': os.getenv('AWS_INSTANCE_ID')}],
-            StartTime=datetime.utcnow() - timedelta(minutes=5),
-            EndTime=datetime.utcnow(),
-            Period=300,
-            Statistics=['Average']
+        # Create rich embed
+        embed = discord.Embed(
+            title="🤖 Bot Performance Dashboard",
+            color=discord.Color.blue(),
+            timestamp=datetime.now()
         )
-        network_out = network_out_response['Datapoints'][0]['Average'] if network_out_response['Datapoints'] else 'N/A'
+
+        # Uptime and Basic Info
+        embed.add_field(
+            name="⏱ Uptime",
+            value=f"{int(days)}d {int(hours)}h {int(minutes)}m {int(seconds)}s",
+            inline=True
+        )
+        
+        # Hardware Monitoring
+        embed.add_field(
+            name="🔥 CPU Usage",
+            value=f"{cpu_percent}%",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="💾 Memory",
+            value=f"Used: {memory.percent}%\nTotal: {memory.total//(1024**3)}GB",
+            inline=True
+        )
+
+        # Disk Status
+        embed.add_field(
+            name="💽 Disk Storage",
+            value=f"Used: {disk.percent}%\nFree: {disk.free//(1024**3)}GB",
+            inline=True
+        )
+
+        # Network Statistics
+        embed.add_field(
+            name="🌐 Network Traffic",
+            value=f"↑ {net_io.bytes_sent//(1024**2)}MB\n↓ {net_io.bytes_recv//(1024**2)}MB",
+            inline=True
+        )
+
+        # Temperature Monitoring (if available)
+        if temps:
+            cpu_temp = next(iter(temps.values()))[0].current
+            embed.add_field(
+                name="🌡 CPU Temp",
+                value=f"{cpu_temp}°C",
+                inline=True
+            )
+
+        # CPU Frequency
+        if cpu_freq:
+            embed.add_field(
+                name="⚡ CPU Clock",
+                value=f"{cpu_freq.current/1000:.2f}GHz",
+                inline=True
+            )
+
+        # Discord Statistics
+        embed.add_field(
+            name="📊 Discord Metrics",
+            value=f"Guilds: {len(bot.guilds)}\nUsers: {sum(g.member_count for g in bot.guilds)}",
+            inline=False
+        )
+
+        # Latency Information
+        embed.set_footer(text=f"API Latency: {round(bot.latency * 1000)}ms")
+
+        await ctx.send(embed=embed)
 
     except Exception as e:
-        logging.error(f"Failed to fetch AWS metrics: {e}")
-        cpu_usage = memory_usage = network_in = network_out = 'N/A'
-
-    stats_msg = f"""```
-Bot Statistics:
-⏱️ Uptime: {days}d {hours}h {minutes}m {seconds}s
-🏓 Ping: {round(bot.latency * 1000)}ms
-💻 CPU Usage: {cpu_usage}%
-💾 Memory Usage: {memory_usage}%
-🌐 Network In: {network_in} bytes
-🌐 Network Out: {network_out} bytes
-```"""
-    await ctx.send(stats_msg)
-
+        logging.error(f"Stats command error: {str(e)}")
+        await ctx.send("❌ Failed to retrieve statistics. Check system permissions!")
+        await notify_owner(f"Stats command failed: {str(e)}")
 
 
 @bot.command(aliases=['logs', 'r'])
