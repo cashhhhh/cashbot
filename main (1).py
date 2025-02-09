@@ -12,6 +12,7 @@ import discord
 from discord.ext import commands
 import threading
 import asyncio
+import boto3  # AWS SDK for Python
 
 # Configuration
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
@@ -442,7 +443,7 @@ async def leaderboard(ctx):
 
 @bot.command(name='stats')
 async def stats(ctx):
-    """Show bot statistics including uptime and system info."""
+    """Show bot statistics including uptime and AWS monitoring info."""
     if not start_time:
         await ctx.send("Bot statistics not available yet.")
         return
@@ -451,25 +452,73 @@ async def stats(ctx):
     uptime = time.time() - start_time
     days = int(uptime // (24 * 3600))
     hours = int((uptime % (24 * 3600)) // 3600)
-    minutes = int((uptime % 3600) // 60)
+    minutes = int((uptime % 3600)) // 60
     seconds = int(uptime % 60)
 
-    # Get system stats
-    import psutil
-    cpu_usage = psutil.cpu_percent()
-    memory = psutil.virtual_memory()
+    # Fetch AWS CloudWatch metrics
+    try:
+        # Get CPU Utilization
+        cpu_response = cloudwatch.get_metric_statistics(
+            Namespace='AWS/EC2',
+            MetricName='CPUUtilization',
+            Dimensions=[{'Name': 'InstanceId', 'Value': os.getenv('AWS_INSTANCE_ID')}],
+            StartTime=datetime.utcnow() - timedelta(minutes=5),
+            EndTime=datetime.utcnow(),
+            Period=300,
+            Statistics=['Average']
+        )
+        cpu_usage = cpu_response['Datapoints'][0]['Average'] if cpu_response['Datapoints'] else 'N/A'
+
+        # Get Memory Utilization
+        memory_response = cloudwatch.get_metric_statistics(
+            Namespace='System/Linux',
+            MetricName='MemoryUtilization',
+            Dimensions=[{'Name': 'InstanceId', 'Value': os.getenv('AWS_INSTANCE_ID')}],
+            StartTime=datetime.utcnow() - timedelta(minutes=5),
+            EndTime=datetime.utcnow(),
+            Period=300,
+            Statistics=['Average']
+        )
+        memory_usage = memory_response['Datapoints'][0]['Average'] if memory_response['Datapoints'] else 'N/A'
+
+        # Get Network In/Out
+        network_in_response = cloudwatch.get_metric_statistics(
+            Namespace='AWS/EC2',
+            MetricName='NetworkIn',
+            Dimensions=[{'Name': 'InstanceId', 'Value': os.getenv('AWS_INSTANCE_ID')}],
+            StartTime=datetime.utcnow() - timedelta(minutes=5),
+            EndTime=datetime.utcnow(),
+            Period=300,
+            Statistics=['Average']
+        )
+        network_in = network_in_response['Datapoints'][0]['Average'] if network_in_response['Datapoints'] else 'N/A'
+
+        network_out_response = cloudwatch.get_metric_statistics(
+            Namespace='AWS/EC2',
+            MetricName='NetworkOut',
+            Dimensions=[{'Name': 'InstanceId', 'Value': os.getenv('AWS_INSTANCE_ID')}],
+            StartTime=datetime.utcnow() - timedelta(minutes=5),
+            EndTime=datetime.utcnow(),
+            Period=300,
+            Statistics=['Average']
+        )
+        network_out = network_out_response['Datapoints'][0]['Average'] if network_out_response['Datapoints'] else 'N/A'
+
+    except Exception as e:
+        logging.error(f"Failed to fetch AWS metrics: {e}")
+        cpu_usage = memory_usage = network_in = network_out = 'N/A'
 
     stats_msg = f"""```
 Bot Statistics:
 ⏱️ Uptime: {days}d {hours}h {minutes}m {seconds}s
 🏓 Ping: {round(bot.latency * 1000)}ms
 💻 CPU Usage: {cpu_usage}%
-💾 Memory Usage: {memory.percent}%
+💾 Memory Usage: {memory_usage}%
+🌐 Network In: {network_in} bytes
+🌐 Network Out: {network_out} bytes
 ```"""
     await ctx.send(stats_msg)
 
-
-from datetime import datetime
 
 
 @bot.command(aliases=['logs', 'r'])
