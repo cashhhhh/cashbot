@@ -23,7 +23,7 @@ OWNER_IDS = [
 ]  # List of owner IDs
 DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 ALERT_CHANNEL_ID = 1223077287457587221
-
+AWS_INSTANCE_ID = 'i-0c5eefd9c3afd7969'  # Updated instance ID
 # Logging Setup
 logging.basicConfig(level=logging.INFO)
 
