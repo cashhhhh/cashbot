@@ -9,13 +9,13 @@ import re
 from datetime import datetime, timedelta
 from email.header import decode_header
 from flask import Flask, redirect, request
-import discord
+import discord import tasks
 from discord.ext import commands
 import threading
 import asyncio
 import boto3  # AWS SDK for Python
 import psutil
-import tasks 
+
 
 # Add these global variables at the top with other globals
 SALES_ROLE_ID = 112233445566778899  # Replace with your sales role ID
