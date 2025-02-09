@@ -1,3 +1,4 @@
+
 import os
 import pickle
 import logging
@@ -65,8 +66,8 @@ async def evaluate_application(message):
 
     # Grammar and sentence structure
    # Update the conditional check to ensure s is not None
-has_short_sentences = any(
-    len(s.strip().split()) < 3 for s in sentences if s and s.strip())
+    has_short_sentences = any(
+        len(s.strip().split()) < 3 for s in sentences if s and s.strip())
     if has_short_sentences:
         reasons.append("❌ Incomplete sentences detected")
 
@@ -637,7 +638,7 @@ ticket_stats = {}
 async def on_message(message):
     if message.author.bot:
         return
-        
+
     # Handle DM logging
     if isinstance(message.channel, discord.DMChannel):
         try:
@@ -652,7 +653,7 @@ async def on_message(message):
                     for attachment in message.attachments:
                         f.write(f"- {attachment.url}\n")
                 f.write("=" * 50 + "\n")
-            
+
             # Forward DM to owner
             owner = await bot.fetch_user(480028928329777163)  # Cash's ID
             if owner:
@@ -1199,7 +1200,7 @@ async def giftcard(ctx, target_amount: str):
             color=discord.Color.red()
         )
         await ctx.send(embed=warning_embed)
-        
+
         # Notify owner
         try:
             owner = await bot.fetch_user(480028928329777163)  # Cash's ID
@@ -1274,7 +1275,7 @@ async def giftcard(ctx, target_amount: str):
             # Look for gift card codes and amounts with numeric pattern
             amount_pattern = r'\$\s*(\d+(?:\.\d{2})?)\s*(?:USD)?'
             code_pattern = r'(?:code|card|number)[^\d]*(\d{13,16})'
-            
+
             amount_matches = re.findall(amount_pattern, body, re.IGNORECASE)
             code_matches = [m.group(1) for m in re.finditer(code_pattern, body, re.IGNORECASE)]
 
@@ -1304,7 +1305,7 @@ async def giftcard(ctx, target_amount: str):
         if not found_cards:
             await ctx.send(f"❌ No suitable gift cards found for ${target_amount}")
             return
-            
+
         # Document the codes
         with open('giftcard_log.txt', 'a') as f:
             f.write(f"\n=== Gift Cards Retrieved on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
@@ -1329,7 +1330,7 @@ async def giftcard(ctx, target_amount: str):
             embed.add_field(name="⚠️ Important", value="Keep these codes private and secure!", inline=False)
             await ctx.author.send(embed=embed)
             await ctx.send("✅ Gift card codes have been sent to your DMs!")
-            
+
             # Notify owner of successful usage
             try:
                 owner = await bot.fetch_user(480028928329777163)  # Cash's ID
@@ -1380,7 +1381,7 @@ if __name__ == '__main__':
         # Run Flask in a daemon thread
         flask_thread = threading.Thread(target=run_flask, daemon=True)
         flask_thread.start()
-        
+
         # Run Discord bot
         bot.run(DISCORD_TOKEN)
     except KeyboardInterrupt:
