@@ -16,6 +16,11 @@ import asyncio
 import boto3  # AWS SDK for Python
 import psutil
 
+# Add these global variables at the top with other globals
+SALES_ROLE_ID = 112233445566778899  # Replace with your sales role ID
+ALERT_CHANNEL_ID = 1223077287457587221  # Your existing alert channel
+MIN_ONLINE_THRESHOLD = 5  # Minimum expected active sales members
+activity_log = {}
 # Configuration
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 TOKEN_PATH = 'token.pickle'
@@ -1491,7 +1496,124 @@ async def give_role(ctx, role_id: str, user: discord.Member):
         await ctx.send(error_msg)
         logging.error(error_msg)
         await notify_owner(f"Role assignment failed: {error_msg}")
+# Add this background task (place before on_ready event)
+@tasks.loop(minutes=5)
+async def monitor_sales_activity():
+    try:
+        channel = bot.get_channel(ALERT_CHANNEL_ID)
+        guild = bot.get_guild(YOUR_SERVER_ID)  # Replace with your server ID
+        
+        sales_role = guild.get_role(SALES_ROLE_ID)
+        active_members = []
+        
+        for member in sales_role.members:
+            # Check for specific activity
+            if any(act.name.lower() == "psrp standing on senora fwy" 
+                   for act in member.activities if act.type == discord.ActivityType.playing):
+                active_members.append(member)
+                
+            # Update activity log
+            activity_log[member.id] = {
+                "last_seen": datetime.now().isoformat(),
+                "status": str(member.status),
+                "activities": [act.name for act in member.activities]
+            }
+        
+        # Send alert if below threshold
+        if len(active_members) < MIN_ONLINE_THRESHOLD:
+            embed = discord.Embed(
+                title="🚨 Low Sales Activity Alert",
+                description=f"Only {len(active_members)}/{len(sales_role.members)} sales members actively in-game!",
+                color=discord.Color.red()
+            )
+            await channel.send(embed=embed)
+            
+        # Log daily activity
+        with open('sales_activity.json', 'w') as f:
+            json.dump(activity_log, f, indent=2)
 
+    except Exception as e:
+        logging.error(f"Activity monitor error: {str(e)}")
+
+# Add these commands
+@bot.command(name='salesstatus')
+async def sales_status(ctx):
+    """Check current sales team in-game activity"""
+    try:
+        guild = ctx.guild
+        sales_role = guild.get_role(SALES_ROLE_ID)
+        
+        active_members = []
+        for member in sales_role.members:
+            if any(act.name.lower() == "psrp standing on senora fwy" 
+                   for act in member.activities if act.type == discord.ActivityType.playing):
+                active_members.append(member.mention)
+                
+        embed = discord.Embed(
+            title="📊 Current Sales Team Activity",
+            description=f"**In-Game:** {len(active_members)}/{len(sales_role.members)}",
+            color=discord.Color.blue()
+        )
+        
+        if active_members:
+            embed.add_field(
+                name="Active Members",
+                value="\n".join(active_members[:25]),  # Discord field value limit
+                inline=False
+            )
+            
+        await ctx.send(embed=embed)
+        
+    except Exception as e:
+        await ctx.send(f"❌ Error checking status: {str(e)}")
+
+@bot.command(name='salesreport')
+async def sales_report(ctx):
+    """Generate daily activity report"""
+    try:
+        with open('sales_activity.json', 'r') as f:
+            activity_data = json.load(f)
+            
+        # Generate report
+        active_hours = defaultdict(int)
+        for entry in activity_data.values():
+            hour = datetime.fromisoformat(entry['last_seen']).hour
+            if "psrp standing on senora fwy" in entry['activities']:
+                active_hours[hour] += 1
+                
+        # Create chart data
+        hours = sorted(active_hours.keys())
+        counts = [active_hours[h] for h in hours]
+        plt.figure(figsize=(10, 4))
+        plt.bar(hours, counts)
+        plt.title("Hourly Activity Distribution")
+        plt.xlabel("Hour of Day")
+        plt.ylabel("Active Members")
+        plt.xticks(range(24))
+        plt.tight_layout()
+        plt.savefig('activity_chart.png')
+        plt.close()
+        
+        # Create embed
+        embed = discord.Embed(
+            title="📈 Daily Sales Activity Report",
+            description="24-hour activity overview",
+            color=discord.Color.green()
+        )
+        embed.set_image(url="attachment://activity_chart.png")
+        
+        await ctx.send(embed=embed, file=discord.File('activity_chart.png'))
+        
+    except Exception as e:
+        await ctx.send(f"❌ Error generating report: {str(e)}")
+
+# Start monitoring when bot is ready
+@bot.event
+async def on_ready():
+    global start_time
+    start_time = time.time()
+    monitor_sales_activity.start()  # Start the monitoring loop
+    logging.info(f'{bot.user} has connected to Discord!')
 if __name__ == '__main__':
     try:
         # Run Flask in a daemon thread
