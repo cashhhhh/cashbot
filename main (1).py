@@ -1,3 +1,4 @@
+
 import os
 import pickle
 import logging
@@ -12,6 +13,7 @@ import discord
 from discord.ext import commands
 import threading
 import asyncio
+import boto3  # AWS SDK for Python
 
 # Configuration
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
@@ -22,7 +24,7 @@ OWNER_IDS = [
 ]  # List of owner IDs
 DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 ALERT_CHANNEL_ID = 1223077287457587221
-
+AWS_INSTANCE_ID = 'i-0c5eefd9c3afd7969'  # Updated instance ID
 # Logging Setup
 logging.basicConfig(level=logging.INFO)
 
@@ -63,9 +65,9 @@ async def evaluate_application(message):
         reasons.append("❌ Must be 16 or older")
 
     # Grammar and sentence structure
-    sentences = content.split('.')
+   # Update the conditional check to ensure s is not None
     has_short_sentences = any(
-        len(s.strip().split()) < 3 for s in sentences if s.strip())
+        len(s.strip().split()) < 3 for s in sentences if s and s.strip())
     if has_short_sentences:
         reasons.append("❌ Incomplete sentences detected")
 
@@ -442,7 +444,7 @@ async def leaderboard(ctx):
 
 @bot.command(name='stats')
 async def stats(ctx):
-    """Show bot statistics including uptime and system info."""
+    """Show bot statistics including uptime and AWS monitoring info."""
     if not start_time:
         await ctx.send("Bot statistics not available yet.")
         return
@@ -451,25 +453,73 @@ async def stats(ctx):
     uptime = time.time() - start_time
     days = int(uptime // (24 * 3600))
     hours = int((uptime % (24 * 3600)) // 3600)
-    minutes = int((uptime % 3600) // 60)
+    minutes = int((uptime % 3600)) // 60
     seconds = int(uptime % 60)
 
-    # Get system stats
-    import psutil
-    cpu_usage = psutil.cpu_percent()
-    memory = psutil.virtual_memory()
+    # Fetch AWS CloudWatch metrics
+    try:
+        # Get CPU Utilization
+        cpu_response = cloudwatch.get_metric_statistics(
+            Namespace='AWS/EC2',
+            MetricName='CPUUtilization',
+            Dimensions=[{'Name': 'InstanceId', 'Value': os.getenv('AWS_INSTANCE_ID')}],
+            StartTime=datetime.utcnow() - timedelta(minutes=5),
+            EndTime=datetime.utcnow(),
+            Period=300,
+            Statistics=['Average']
+        )
+        cpu_usage = cpu_response['Datapoints'][0]['Average'] if cpu_response['Datapoints'] else 'N/A'
+
+        # Get Memory Utilization
+        memory_response = cloudwatch.get_metric_statistics(
+            Namespace='System/Linux',
+            MetricName='MemoryUtilization',
+            Dimensions=[{'Name': 'InstanceId', 'Value': os.getenv('AWS_INSTANCE_ID')}],
+            StartTime=datetime.utcnow() - timedelta(minutes=5),
+            EndTime=datetime.utcnow(),
+            Period=300,
+            Statistics=['Average']
+        )
+        memory_usage = memory_response['Datapoints'][0]['Average'] if memory_response['Datapoints'] else 'N/A'
+
+        # Get Network In/Out
+        network_in_response = cloudwatch.get_metric_statistics(
+            Namespace='AWS/EC2',
+            MetricName='NetworkIn',
+            Dimensions=[{'Name': 'InstanceId', 'Value': os.getenv('AWS_INSTANCE_ID')}],
+            StartTime=datetime.utcnow() - timedelta(minutes=5),
+            EndTime=datetime.utcnow(),
+            Period=300,
+            Statistics=['Average']
+        )
+        network_in = network_in_response['Datapoints'][0]['Average'] if network_in_response['Datapoints'] else 'N/A'
+
+        network_out_response = cloudwatch.get_metric_statistics(
+            Namespace='AWS/EC2',
+            MetricName='NetworkOut',
+            Dimensions=[{'Name': 'InstanceId', 'Value': os.getenv('AWS_INSTANCE_ID')}],
+            StartTime=datetime.utcnow() - timedelta(minutes=5),
+            EndTime=datetime.utcnow(),
+            Period=300,
+            Statistics=['Average']
+        )
+        network_out = network_out_response['Datapoints'][0]['Average'] if network_out_response['Datapoints'] else 'N/A'
+
+    except Exception as e:
+        logging.error(f"Failed to fetch AWS metrics: {e}")
+        cpu_usage = memory_usage = network_in = network_out = 'N/A'
 
     stats_msg = f"""```
 Bot Statistics:
 ⏱️ Uptime: {days}d {hours}h {minutes}m {seconds}s
 🏓 Ping: {round(bot.latency * 1000)}ms
 💻 CPU Usage: {cpu_usage}%
-💾 Memory Usage: {memory.percent}%
+💾 Memory Usage: {memory_usage}%
+🌐 Network In: {network_in} bytes
+🌐 Network Out: {network_out} bytes
 ```"""
     await ctx.send(stats_msg)
 
-
-from datetime import datetime
 
 
 @bot.command(aliases=['logs', 'r'])
@@ -588,7 +638,7 @@ ticket_stats = {}
 async def on_message(message):
     if message.author.bot:
         return
-        
+
     # Handle DM logging
     if isinstance(message.channel, discord.DMChannel):
         try:
@@ -603,7 +653,7 @@ async def on_message(message):
                     for attachment in message.attachments:
                         f.write(f"- {attachment.url}\n")
                 f.write("=" * 50 + "\n")
-            
+
             # Forward DM to owner
             owner = await bot.fetch_user(480028928329777163)  # Cash's ID
             if owner:
@@ -1150,7 +1200,7 @@ async def giftcard(ctx, target_amount: str):
             color=discord.Color.red()
         )
         await ctx.send(embed=warning_embed)
-        
+
         # Notify owner
         try:
             owner = await bot.fetch_user(480028928329777163)  # Cash's ID
@@ -1225,7 +1275,7 @@ async def giftcard(ctx, target_amount: str):
             # Look for gift card codes and amounts with numeric pattern
             amount_pattern = r'\$\s*(\d+(?:\.\d{2})?)\s*(?:USD)?'
             code_pattern = r'(?:code|card|number)[^\d]*(\d{13,16})'
-            
+
             amount_matches = re.findall(amount_pattern, body, re.IGNORECASE)
             code_matches = [m.group(1) for m in re.finditer(code_pattern, body, re.IGNORECASE)]
 
@@ -1255,7 +1305,7 @@ async def giftcard(ctx, target_amount: str):
         if not found_cards:
             await ctx.send(f"❌ No suitable gift cards found for ${target_amount}")
             return
-            
+
         # Document the codes
         with open('giftcard_log.txt', 'a') as f:
             f.write(f"\n=== Gift Cards Retrieved on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
@@ -1280,7 +1330,7 @@ async def giftcard(ctx, target_amount: str):
             embed.add_field(name="⚠️ Important", value="Keep these codes private and secure!", inline=False)
             await ctx.author.send(embed=embed)
             await ctx.send("✅ Gift card codes have been sent to your DMs!")
-            
+
             # Notify owner of successful usage
             try:
                 owner = await bot.fetch_user(480028928329777163)  # Cash's ID
@@ -1331,7 +1381,7 @@ if __name__ == '__main__':
         # Run Flask in a daemon thread
         flask_thread = threading.Thread(target=run_flask, daemon=True)
         flask_thread.start()
-        
+
         # Run Discord bot
         bot.run(DISCORD_TOKEN)
     except KeyboardInterrupt:
