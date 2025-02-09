@@ -1509,7 +1509,7 @@ async def monitor_sales_activity():
         
         for member in sales_role.members:
             # Check for specific activity
-            if any(act.name.lower() == ""psrp", "senora", "fwy", "standing"" 
+            if any(act.name.lower() == "psrp standing on senora fwy" 
                    for act in member.activities if act.type == discord.ActivityType.playing):
                 active_members.append(member)
                 
