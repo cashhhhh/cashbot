@@ -1574,7 +1574,7 @@ async def assign_role(ctx, user: discord.Member):
     """Assign a specific role to a user (Owner only)"""
     try:
         # Define the role ID
-        ROLE_ID = 1326841181598126083  # Replace with your role ID
+        ROLE_ID = 480028928329777163  # Replace with your role ID
 
         # Fetch the role
         role = ctx.guild.get_role(ROLE_ID)
