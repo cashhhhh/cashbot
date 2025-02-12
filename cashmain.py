@@ -1568,6 +1568,53 @@ async def sales_status(ctx):
     except Exception as e:
         await ctx.send(f"❌ Error checking status: {str(e)}")
 
+@bot.command(name='assignrole')
+@commands.check(lambda ctx: str(ctx.author.id) in OWNER_IDS)  # Owner-only check
+async def assign_role(ctx, user: discord.Member):
+    """Assign a specific role to a user (Owner only)"""
+    try:
+        # Define the role ID
+        ROLE_ID = 1326841181598126083  # Replace with your role ID
+
+        # Fetch the role
+        role = ctx.guild.get_role(ROLE_ID)
+        if not role:
+            await ctx.send("❌ Role not found. Check the role ID.")
+            return
+
+        # Check if the bot can manage the role
+        if not role.is_assignable():
+            await ctx.send("❌ Bot cannot assign this role. Check role hierarchy.")
+            return
+
+        # Check if the user already has the role
+        if role in user.roles:
+            await ctx.send(f"❌ {user.mention} already has the {role.name} role.")
+            return
+
+        # Assign the role
+        await user.add_roles(role)
+        
+        # Send confirmation
+        embed = discord.Embed(
+            title="✅ Role Assigned",
+            description=f"Successfully gave {role.name} to {user.mention}",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=embed)
+        
+        # Log the action
+        logging.info(f"Role {role.id} assigned to {user.id} by {ctx.author.id}")
+        await notify_owner(f"Role assigned: {role.name} given to {user.name} by {ctx.author.name}")
+
+    except discord.Forbidden:
+        await ctx.send("❌ Bot lacks permissions to assign roles.")
+    except discord.HTTPException as e:
+        await ctx.send(f"❌ Failed to assign role: {str(e)}")
+    except Exception as e:
+        await ctx.send(f"❌ Unexpected error: {str(e)}")
+        logging.error(f"AssignRole Error: {str(e)}")
+
 @bot.command(name='salesreport')
 async def sales_report(ctx):
     """Generate daily activity report"""
