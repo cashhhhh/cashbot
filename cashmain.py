@@ -1655,6 +1655,235 @@ async def sales_report(ctx):
     except Exception as e:
         await ctx.send(f"❌ Error generating report: {str(e)}")
 
+# Load server configurations
+def load_server_config():
+    """Load server-specific configuration from servers.json."""
+    if not os.path.exists('servers.json'):
+        with open('servers.json', 'w') as f:
+            json.dump({}, f)
+    with open('servers.json') as f:
+        return json.load(f)
+
+def save_server_config(config):
+    """Save server-specific configuration to servers.json."""
+    with open('servers.json', 'w') as f:
+        json.dump(config, f, indent=4)
+
+# Discord bot setup
+intents = discord.Intents.all()
+bot = commands.Bot(command_prefix='!', intents=intents)
+
+# Server setup menu
+@bot.command(name='setup')
+async def setup(ctx):
+    """Start the server setup menu."""
+    def check(message):
+        return message.author == ctx.author and message.channel == ctx.channel
+
+    # Step 1: Server name
+    await ctx.send("🛠️ **Server Setup**\nWhat is the name of this server?")
+    server_name = await bot.wait_for('message', check=check)
+    server_name = server_name.content
+
+    # Step 2: Server owner IDs
+    await ctx.send("👑 Enter the server owner IDs (comma-separated):")
+    owner_ids = await bot.wait_for('message', check=check)
+    owner_ids = [int(id.strip()) for id in owner_ids.content.split(',')]
+
+    # Step 3: Gmail email
+    await ctx.send("📧 Enter the Gmail email address for this server:")
+    gmail_email = await bot.wait_for('message', check=check)
+    gmail_email = gmail_email.content
+
+    # Step 4: Gmail app password
+    await ctx.send("🔑 Enter the Gmail app password:")
+    gmail_password = await bot.wait_for('message', check=check)
+    gmail_password = gmail_password.content
+
+    # Step 5: Checkticket role ID
+    await ctx.send("🎟️ Enter the role ID for the checkticket command:")
+    checkticket_role_id = await bot.wait_for('message', check=check)
+    checkticket_role_id = int(checkticket_role_id.content)
+
+    # Step 6: Alert channel ID
+    await ctx.send("🚨 Enter the alert channel ID:")
+    alert_channel_id = await bot.wait_for('message', check=check)
+    alert_channel_id = int(alert_channel_id.content)
+
+    # Step 7: Email filter
+    await ctx.send("📩 Enter the email filter (e.g., 'from:example@domain.com'):")
+    email_filter = await bot.wait_for('message', check=check)
+    email_filter = email_filter.content
+
+    # Save the configuration
+    config = load_server_config()
+    config[server_name] = {
+        "OWNER_IDS": owner_ids,
+        "GMAIL_EMAIL": gmail_email,
+        "GMAIL_PASSWORD": gmail_password,
+        "CHECKTICKET_ROLE_ID": checkticket_role_id,
+        "ALERT_CHANNEL_ID": alert_channel_id,
+        "EMAIL_FILTER": email_filter,
+        "LOG_DIR": f"logs/{server_name.lower().replace(' ', '_')}/"
+    }
+    save_server_config(config)
+
+    # Create log directory
+    os.makedirs(config[server_name]["LOG_DIR"], exist_ok=True)
+
+    # Notify completion
+    await ctx.send(f"✅ Server **{server_name}** has been configured successfully!")
+
+    # Reboot the bot
+    await ctx.send("🔄 Rebooting the bot to apply changes...")
+    await bot.close()
+    os.execv(sys.executable, ['python'] + sys.argv)
+
+# Email processing
+def get_emails_imap(server_config, unread_only=True):
+    """Fetch emails using server-specific credentials and filters."""
+    try:
+        # Connect to Gmail's IMAP server
+        imap = imaplib.IMAP4_SSL("imap.gmail.com")
+
+        # Login using server-specific email credentials
+        EMAIL = server_config["GMAIL_EMAIL"]
+        PASSWORD = server_config["GMAIL_PASSWORD"]
+        imap.login(EMAIL, PASSWORD)
+
+        # Select the mailbox
+        imap.select("inbox")
+
+        # Search for emails (all or unread only)
+        criteria = f'(UNSEEN {server_config["EMAIL_FILTER"]})' if unread_only \
+                  else f'({server_config["EMAIL_FILTER"]})'
+        status, messages = imap.search(None, criteria)
+
+        if status != "OK":
+            raise Exception("Failed to fetch messages.")
+
+        email_ids = messages[0].split()
+        emails = []
+
+        for email_id in email_ids:
+            # Fetch the email
+            res, msg = imap.fetch(email_id, "(RFC822)")
+            if res != "OK":
+                continue
+
+            # Parse the email content
+            for response in msg:
+                if isinstance(response, tuple):
+                    msg = email.message_from_bytes(response[1])
+
+                    # Decode the email subject
+                    subject, encoding = decode_header(msg["Subject"])[0]
+                    if isinstance(subject, bytes):
+                        # If it's a bytes type, decode to str
+                        subject = subject.decode(encoding if encoding else "utf-8")
+
+                    # Extract the email snippet
+                    if msg.is_multipart():
+                        snippet = ""
+                        for part in msg.walk():
+                            if part.get_content_type() == "text/plain":
+                                snippet = part.get_payload(decode=True).decode()
+                                break
+                    else:
+                        snippet = msg.get_payload(decode=True).decode()
+
+                    emails.append({
+                        "subject": subject,
+                        "snippet": snippet,
+                    })
+
+        # Close the connection
+        imap.close()
+        imap.logout()
+
+        return emails
+    except Exception as e:
+        logging.error(f"IMAP error: {e}")
+        return []
+
+# Server-specific commands
+@bot.command(name='checkticket')
+async def checkticket(ctx, amount: float):
+    """Check for emails with a specific gift card amount."""
+    server_config = load_server_config().get(ctx.guild.name, None)
+    
+    if not server_config:
+        await ctx.send("❌ Server not configured properly. Use `!setup` to configure this server.")
+        return
+
+    emails = get_emails_imap(server_config)
+    
+    # Server-specific logging
+    log_path = f"{server_config['LOG_DIR']}ticket_checks.log"
+    with open(log_path, "a") as f:
+        f.write(f"[{datetime.now()}] {ctx.author} checked ${amount}\n")
+    
+    matching_emails = [
+        email for email in emails if str(amount) in email['snippet']
+    ]
+    if matching_emails:
+        embed = discord.Embed(title="🎟️ Gift Card Check Results",
+                              color=discord.Color.green())
+        embed.add_field(name="Status",
+                        value="✅ Gift Card Found.",
+                        inline=False)
+        embed.add_field(name="Amount", value=f"${amount:.2f} USD", inline=True)
+        embed.add_field(name="Matches Found",
+                        value=f"{len(matching_emails)} email(s)",
+                        inline=True)
+        await ctx.send(embed=embed)
+    else:
+        embed = discord.Embed(title="🎟️ Gift Card Check Results",
+                              color=discord.Color.red())
+        embed.add_field(name="Status",
+                        value="❌ No Gift Card Found",
+                        inline=False)
+        embed.add_field(name="Amount Searched",
+                        value=f"${amount:.2f} USD",
+                        inline=True)
+        await ctx.send(embed=embed)
+
+# Event handlers
+@bot.event
+async def on_message(message):
+    if message.guild:  # Only process server messages
+        server_config = load_server_config().get(message.guild.name, None)
+        
+        if server_config:
+            # Server-specific DM forwarding
+            if isinstance(message.channel, discord.DMChannel):
+                log_path = f"{server_config['LOG_DIR']}dms.log"
+                with open(log_path, "a") as f:
+                    f.write(f"[{message.created_at}] {message.content}\n")
+    
+    await bot.process_commands(message)
+
+@bot.event
+async def on_ready():
+    logging.info(f'{bot.user} has connected to Discord!')
+
+# Run the bot
+if __name__ == '__main__':
+    # Load environment variables
+    DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
+    
+    if not DISCORD_TOKEN:
+        logging.error("DISCORD_TOKEN environment variable not set")
+        exit(1)
+
+    # Start the bot
+    bot.run(DISCORD_TOKEN)
+
+
+
+
+
+
 # Start monitoring when bot is ready
 @bot.event
 async def on_ready():
