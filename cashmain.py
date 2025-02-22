@@ -15,7 +15,7 @@ import threading
 import asyncio
 import boto3  # AWS SDK for Python
 import psutil
-
+from discord.ui import Button, View
 
 # Add these global variables at the top with other globals
 SALES_ROLE_ID = 1103522760073945168  # Replace with your sales role ID
@@ -192,6 +192,8 @@ def oauth2callback():
 @app.route('/success')
 def success():
     return "Authentication successful. Now you can test the bot commands in Discord."
+
+
 
 
 # Store command usage timestamps
@@ -549,6 +551,91 @@ async def stats(ctx):
         await ctx.send("❌ Failed to retrieve statistics. Check system permissions!")
         await notify_owner(f"Stats command failed: {str(e)}")
 
+from discord.ui import Button, View
+
+# Role request system using !request command
+@bot.command(name="request")
+async def request(ctx, role_to_add: discord.Role, role_to_remove: discord.Role):
+    """Handle role requests from users."""
+    # Check if the user already has the role to add
+    if role_to_add in ctx.author.roles:
+        await ctx.send(
+            f"You already have the role {role_to_add.mention}.", ephemeral=True
+        )
+        return
+
+    # Check if the user doesn't have the role to remove
+    if role_to_remove not in ctx.author.roles:
+        await ctx.send(
+            f"You don't have the role {role_to_remove.mention}.", ephemeral=True
+        )
+        return
+
+    # Create an embed for the request
+    embed = discord.Embed(
+        title="Role Request",
+        description=f"{ctx.author.mention} has requested the following role changes:",
+        color=discord.Color.blue(),
+    )
+    embed.add_field(name="Role to Add", value=role_to_add.mention, inline=False)
+    embed.add_field(name="Role to Remove", value=role_to_remove.mention, inline=False)
+
+    # Create buttons for approval/denial
+    approve_button = Button(label="Approve", style=discord.ButtonStyle.green)
+    deny_button = Button(label="Deny", style=discord.ButtonStyle.red)
+
+    # Define the view for the buttons
+    class RequestView(View):
+        def __init__(self):
+            super().__init__(timeout=60)  # 60-second timeout
+
+        @discord.ui.button(label="Approve", style=discord.ButtonStyle.green)
+        async def approve(self, button_interaction: discord.Interaction, button: Button):
+            # Check if the interaction is from a support team member
+            support_role_id = 835672517355372554  # Support Team role ID
+            if not any(role.id == support_role_id for role in button_interaction.user.roles):
+                await button_interaction.response.send_message(
+                    "You don't have permission to approve requests.", ephemeral=True
+                )
+                return
+
+            # Add the requested role and remove the specified role
+            await ctx.author.add_roles(role_to_add)
+            await ctx.author.remove_roles(role_to_remove)
+
+            # Notify the user
+            await ctx.author.send(
+                f"Your role request has been approved! You now have {role_to_add.mention} and no longer have {role_to_remove.mention}."
+            )
+
+            # Update the embed
+            embed.color = discord.Color.green()
+            embed.set_footer(text=f"Approved by {button_interaction.user.name}")
+            await button_interaction.response.edit_message(embed=embed, view=None)
+
+        @discord.ui.button(label="Deny", style=discord.ButtonStyle.red)
+        async def deny(self, button_interaction: discord.Interaction, button: Button):
+            # Check if the interaction is from a support team member
+            support_role_id = 835672517355372554  # Support Team role ID
+            if not any(role.id == support_role_id for role in button_interaction.user.roles):
+                await button_interaction.response.send_message(
+                    "You don't have permission to deny requests.", ephemeral=True
+                )
+                return
+
+            # Notify the user
+            await ctx.author.send(
+                f"Your role request has been denied. You will not receive {role_to_add.mention} and will keep {role_to_remove.mention}."
+            )
+
+            # Update the embed
+            embed.color = discord.Color.red()
+            embed.set_footer(text=f"Denied by {button_interaction.user.name}")
+            await button_interaction.response.edit_message(embed=embed, view=None)
+
+    # Send the embed with buttons
+    view = RequestView()
+    await ctx.send(embed=embed, view=view)
 
 @bot.command(aliases=['logs', 'r'])
 async def report(ctx, *, user: discord.Member = None):
