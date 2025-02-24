@@ -16,6 +16,7 @@ import asyncio
 import boto3  # AWS SDK for Python
 import psutil
 from discord.ui import Button, View
+import json
 
 # Add these global variables at the top with other globals
 SALES_ROLE_ID = 1103522760073945168  # Replace with your sales role ID
