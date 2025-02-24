@@ -1731,7 +1731,7 @@ async def list_guilds(ctx):
     await ctx.send(message)
 
 # Run the bot
-bot.run("YOUR_BOT_TOKEN")
+
 
 # Start monitoring when bot is ready
 @bot.event
