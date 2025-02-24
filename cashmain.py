@@ -1658,6 +1658,75 @@ async def sales_report(ctx):
     except Exception as e:
         await ctx.send(f"❌ Error generating report: {str(e)}")
 
+
+# File to store guild information
+GUILD_TRACKER_FILE = "guild_tracker.json"
+
+# Load existing guild data
+def load_guild_data():
+    if os.path.exists(GUILD_TRACKER_FILE):
+        with open(GUILD_TRACKER_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+# Save guild data
+def save_guild_data(guild_data):
+    with open(GUILD_TRACKER_FILE, "w") as f:
+        json.dump(guild_data, f, indent=4)
+
+# Update guild data
+def update_guild_data(guild, action="join"):
+    guild_data = load_guild_data()
+    guild_id = str(guild.id)
+    
+    if action == "join":
+        guild_data[guild_id] = {
+            "name": guild.name,
+            "member_count": guild.member_count,
+            "joined_at": str(guild.me.joined_at)
+        }
+    elif action == "leave":
+        guild_data.pop(guild_id, None)
+    
+    save_guild_data(guild_data)
+
+# Event: When the bot joins a new guild
+@bot.event
+async def on_guild_join(guild):
+    print(f"Joined guild: {guild.name} (ID: {guild.id})")
+    update_guild_data(guild, action="join")
+
+# Event: When the bot leaves a guild
+@bot.event
+async def on_guild_remove(guild):
+    print(f"Left guild: {guild.name} (ID: {guild.id})")
+    update_guild_data(guild, action="leave")
+
+# Command: List all guilds the bot is in
+@bot.command(name="listguilds")
+async def list_guilds(ctx):
+    guild_data = load_guild_data()
+    if not guild_data:
+        await ctx.send("The bot is not in any guilds.")
+        return
+    
+    message = "**Guilds the bot is in:**\n"
+    for guild_id, data in guild_data.items():
+        message += f"- **{data['name']}** (ID: {guild_id}), Members: {data['member_count']}\n"
+    await ctx.send(message)
+
+# Update on_ready to initialize guild data
+@bot.event
+async def on_ready():
+    global start_time
+    start_time = time.time()
+    logging.info(f'{bot.user} has connected to Discord!')
+    
+    # Update guild data for all current guilds
+    for guild in bot.guilds:
+        update_guild_data(guild, action="join")
+
+
 # Start monitoring when bot is ready
 @bot.event
 async def on_ready():
