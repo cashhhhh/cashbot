@@ -1684,7 +1684,7 @@ async def list_guilds(ctx):
         )
     
     await ctx.send(embed=embed)
-@bot.command(name='setup')
+@bot.command(name='setup2')
 async def setup(ctx):
     """Setup the bot for a new server by providing necessary details."""
     def check(m):
