@@ -1684,7 +1684,54 @@ async def list_guilds(ctx):
         )
     
     await ctx.send(embed=embed)
+@bot.command(name='setup')
+async def setup(ctx):
+    """Setup the bot for a new server by providing necessary details."""
+    def check(m):
+        return m.author == ctx.author and m.channel == ctx.channel
 
+    # Check if the server is already configured
+    if str(ctx.guild.id) in config:
+        await ctx.send("This server is already configured. Use `!reconfigure` to update settings.")
+        return
+
+    # Prompt for Server Owner ID
+    await ctx.send("Please enter the **Server Owner ID**:")
+    owner_id_msg = await bot.wait_for('message', check=check)
+    owner_id = owner_id_msg.content
+
+    # Prompt for Gmail
+    await ctx.send("Please enter the **Gmail address**:")
+    gmail_msg = await bot.wait_for('message', check=check)
+    gmail = gmail_msg.content
+
+    # Prompt for Gmail App Password
+    await ctx.send("Please enter the **Gmail App Password**:")
+    app_password_msg = await bot.wait_for('message', check=check)
+    app_password = app_password_msg.content
+
+    # Prompt for CheckTicket Role ID
+    await ctx.send("Please enter the **CheckTicket Role ID**:")
+    checkticket_role_id_msg = await bot.wait_for('message', check=check)
+    checkticket_role_id = checkticket_role_id_msg.content
+
+    # Save the new server's configuration
+    config[str(ctx.guild.id)] = {
+        'owner_id': owner_id,
+        'gmail': gmail,
+        'app_password': app_password,
+        'checkticket_role_id': checkticket_role_id
+    }
+
+    # Save the updated config to the file
+    with open('config.json', 'w') as f:
+        json.dump(config, f, indent=4)
+
+    await ctx.send("✅ Server setup complete! The bot will now monitor this server.")
+
+    # Optional: Reboot or reload the bot to apply changes
+    # await bot.close()
+    # await bot.start(DISCORD_TOKEN)
 
 # Start monitoring when bot is ready
 @bot.event
