@@ -122,18 +122,24 @@ async def evaluate_application(message):
     return embed
 
 
-def get_emails_imap(unread_only=True):
-    """Fetch emails using IMAP, with an option to fetch only unread or all emails."""
+def get_emails_imap(guild_id, unread_only=True):
+    """Fetch emails using IMAP for a specific server."""
     try:
+        # Get server-specific configuration
+        server_config = config.get(str(guild_id))
+        if not server_config:
+            logging.error(f"No configuration found for server {guild_id}")
+            return []
+
         # Connect to Gmail's IMAP server
         imap = imaplib.IMAP4_SSL("imap.gmail.com")
 
-        # Login to your Gmail account (use an App Password here)
-        EMAIL = os.getenv('GMAIL_EMAIL')
-        PASSWORD = os.getenv('GMAIL_PASSWORD')
+        # Login to the Gmail account using server-specific credentials
+        EMAIL = server_config['gmail']
+        PASSWORD = server_config['app_password']
         imap.login(EMAIL, PASSWORD)
 
-        # Select the mailbox you want to use
+        # Select the mailbox
         imap.select("inbox")
 
         # Search for emails
@@ -186,7 +192,7 @@ def get_emails_imap(unread_only=True):
 
         return emails
     except Exception as e:
-        logging.error(f"IMAP error: {e}")
+        logging.error(f"IMAP error for server {guild_id}: {e}")
         return []
 
 
