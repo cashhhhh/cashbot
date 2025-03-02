@@ -18,6 +18,15 @@ import threading
 import asyncio
 import boto3  # AWS SDK for Python
 import psutil
+import json
+import os
+
+# Load or create a config file
+if os.path.exists('config.json'):
+    with open('config.json', 'r') as f:
+        config = json.load(f)
+else:
+    config = {}
 
 
 # Add these global variables at the top with other globals
