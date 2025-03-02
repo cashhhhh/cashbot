@@ -287,7 +287,14 @@ async def checkticket(ctx, amount: float, unread_only: bool = True):
         )
         return
 
-    emails = get_emails_imap(unread_only=unread_only)
+    # Get server-specific configuration
+    server_config = config.get(str(ctx.guild.id))
+    if not server_config:
+        await ctx.send("This server is not configured. Please use `!setup` first.")
+        return
+
+    # Use server-specific Gmail credentials
+    emails = get_emails_imap(ctx.guild.id, unread_only=unread_only)  # Pass guild_id here
     if not emails:
         await ctx.send("No records found, please check your own email.")
         return
@@ -301,7 +308,7 @@ async def checkticket(ctx, amount: float, unread_only: bool = True):
         embed.add_field(
             name="Status",
             value=
-            "✅ Gift Card Found.                                                              MAKE SURE YOU ADD ROLES",
+            "✅ Gift Card Found. MAKE SURE YOU ADD ROLES",
             inline=False)
         embed.add_field(name="Amount", value=f"${amount:.2f} USD", inline=True)
         embed.add_field(name="Matches Found",
