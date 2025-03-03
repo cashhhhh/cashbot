@@ -1755,31 +1755,6 @@ async def setup(ctx):
     # await bot.close()
     # await bot.start(DISCORD_TOKEN)
 
-# Initialize the bot with intents
-intents = discord.Intents.default()
-bot = commands.Bot(command_prefix="!", intents=intents)
-
-# Event: When the bot is ready
-@bot.event
-async def on_ready():
-    print(f"Logged in as {bot.user.name} (ID: {bot.user.id})")
-    print("------")
-
-    # Sync slash commands with Discord
-    try:
-        synced = await bot.tree.sync()
-        print(f"Synced {len(synced)} command(s).")
-    except Exception as e:
-        print(f"Failed to sync commands: {e}")
-
-# Slash command: /hello
-@bot.tree.command(name="hello", description="Say hello to the bot!")
-async def hello(interaction: discord.Interaction):
-    await interaction.response.send_message("Hello, world!")
-
-
-
-
 # Start monitoring when bot is ready
 @bot.event
 async def on_ready():
@@ -1792,7 +1767,7 @@ if __name__ == '__main__':
         # Run Flask in a daemon thread
         flask_thread = threading.Thread(target=run_flask, daemon=True)
         flask_thread.start()
-        
+
         # Run Discord bot
         bot.run(DISCORD_TOKEN)
     except KeyboardInterrupt:
