@@ -1755,6 +1755,92 @@ async def setup(ctx):
     # await bot.close()
     # await bot.start(DISCORD_TOKEN)
 
+# File to store blacklisted users
+BLACKLIST_FILE = "blacklist.json"
+
+# Load blacklisted users from file
+if os.path.exists(BLACKLIST_FILE):
+    with open(BLACKLIST_FILE, "r") as f:
+        blacklist = json.load(f)
+else:
+    blacklist = []
+
+# Function to save blacklisted users to file
+def save_blacklist():
+    with open(BLACKLIST_FILE, "w") as f:
+        json.dump(blacklist, f, indent=4)
+
+# Command: !blacklist add <user_id>
+@bot.command(name="blacklist")
+async def blacklist_command(ctx, action: str, user_id: str = None):
+    """Manage the blacklist."""
+    if action.lower() == "add":
+        if user_id is None:
+            await ctx.send("Please provide a user ID to blacklist.")
+            return
+
+        if user_id in blacklist:
+            await ctx.send(f"User `{user_id}` is already blacklisted.")
+            return
+
+        blacklist.append(user_id)
+        save_blacklist()
+        await ctx.send(f"User `{user_id}` has been added to the blacklist.")
+
+    elif action.lower() == "remove":
+        if user_id is None:
+            await ctx.send("Please provide a user ID to remove from the blacklist.")
+            return
+
+        if user_id not in blacklist:
+            await ctx.send(f"User `{user_id}` is not in the blacklist.")
+            return
+
+        blacklist.remove(user_id)
+        save_blacklist()
+        await ctx.send(f"User `{user_id}` has been removed from the blacklist.")
+
+    elif action.lower() == "list":
+        if not blacklist:
+            await ctx.send("The blacklist is empty.")
+            return
+
+        embed = discord.Embed(
+            title="Blacklisted Users",
+            description="\n".join(blacklist),
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed)
+
+    else:
+        await ctx.send("Invalid action. Use `add`, `remove`, or `list`.")
+
+# Function to check if a user is blacklisted
+def is_blacklisted(user_id):
+    return user_id in blacklist
+
+# Example: Notify seller if a blacklisted user tries to buy something
+@bot.event
+async def on_message(message):
+    # Ignore messages from bots
+    if message.author.bot:
+        return
+
+    # Check if the message is in a ticket channel
+    if "ticket" in message.channel.name.lower():
+        # Check if the user is blacklisted
+        if is_blacklisted(str(message.author.id)):
+            # Notify the seller
+            seller_notification = f"🚨 **Blacklisted User Alert**: {message.author.mention} (ID: {message.author.id}) tried to buy something in {message.channel.mention}."
+            await message.channel.send(seller_notification)
+
+    # Process commands
+    await bot.process_commands(message)
+
+
+
+
+
 # Start monitoring when bot is ready
 @bot.event
 async def on_ready():
