@@ -1837,7 +1837,52 @@ async def on_message(message):
     # Process commands
     await bot.process_commands(message)
 
+@bot.command(name='reconfigure')
+@commands.has_permissions(administrator=True)
+async def reconfigure(ctx):
+    """Reconfigure existing server settings"""
+    # Check if server is configured
+    if str(ctx.guild.id) not in config:
+        await ctx.send("❌ This server isn't configured yet. Use `!setup` first.")
+        return
 
+    def check(m):
+        return m.author == ctx.author and m.channel == ctx.channel
+
+    try:
+        # Get current configuration
+        server_config = config[str(ctx.guild.id)]
+
+        # Prompt for new Gmail
+        await ctx.send("Current Gmail: ||{0}||\nEnter new Gmail (or 'skip' to keep):".format(server_config['gmail']))
+        gmail_msg = await bot.wait_for('message', check=check, timeout=300)
+        if gmail_msg.content.lower() != 'skip':
+            server_config['gmail'] = gmail_msg.content
+
+        # Prompt for new App Password
+        await ctx.send("Enter new App Password (or 'skip' to keep current):")
+        app_password_msg = await bot.wait_for('message', check=check, timeout=300)
+        if app_password_msg.content.lower() != 'skip':
+            server_config['app_password'] = app_password_msg.content
+
+        # Prompt for new CheckTicket Role ID
+        await ctx.send("Current CheckTicket Role ID: ||{0}||\nEnter new Role ID (or 'skip' to keep):".format(
+            server_config['checkticket_role_id']))
+        role_id_msg = await bot.wait_for('message', check=check, timeout=300)
+        if role_id_msg.content.lower() != 'skip':
+            server_config['checkticket_role_id'] = role_id_msg.content
+
+        # Save updated config
+        with open('config.json', 'w') as f:
+            json.dump(config, f, indent=4)
+
+        await ctx.send("✅ Server configuration updated successfully!")
+
+    except asyncio.TimeoutError:
+        await ctx.send("❌ Configuration timed out. Please try again.")
+    except Exception as e:
+        await ctx.send(f"❌ Error during reconfiguration: {str(e)}")
+        logging.error(f"Reconfigure Error: {str(e)}")
 
 
 
