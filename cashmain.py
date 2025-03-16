@@ -256,16 +256,25 @@ async def checkticket(ctx, amount: float, unread_only: bool = True):
                     f"No permission to send traffic alert to user {user_id}")
             except Exception as e:
                 logging.error(
-                    f"Failed to send traffic alert to {user_id}: {e}")
+                    f"Failed to send traffic alert to {user_id}: {except Exception as e:
+        logging.error(f"Error: {str(e)}")
 
     try:
-    # Traffic spike alert system
-    if len(checkticket_timestamps) >= SPIKE_THRESHOLD:
-        spike_embed = discord.Embed(
-            title="🚨 Traffic Alert",
-            description=f"{len(checkticket_timestamps)} checks in {TIME_WINDOW}s",
-            color=discord.Color.red()
-        )
+        # Traffic spike alert system
+        if len(checkticket_timestamps) >= SPIKE_THRESHOLD:
+            spike_embed = discord.Embed(
+                title="🚨 Traffic Alert",
+                description=f"{len(checkticket_timestamps)} checks in {TIME_WINDOW}s",
+                color=discord.Color.red()
+            )  # Added missing closing parenthesis
+            
+            # Add your alert sending logic here
+            # Example:
+            # for user_id in ALERT_USER_IDS:
+            #     await send_alert(user_id, spike_embed)
+
+    except Exception as e:
+        logging.error(f"Traffic alert error: {str(e)}")
         
         # Properly indented loop
         for user_id in ALERT_USER_IDS:
