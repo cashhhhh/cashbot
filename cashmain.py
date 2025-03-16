@@ -1946,6 +1946,53 @@ async def checkticket_log(ctx, amount: float, unread_only: bool = True):
         await ctx.send("❌ An error occurred while fetching emails.")
         logging.error(f"Checkticket log error: {str(e)}")
 
+@bot.command(name='printroleids')
+async def print_role_ids(ctx):
+    """Print all role IDs from the config file (Owner only)"""
+    try:
+        # Permission check (Owner only)
+        if str(ctx.author.id) not in OWNER_IDS:
+            await ctx.send("⛔ This command is restricted to bot owners.")
+            return
+
+        # Load config file
+        if not os.path.exists('config.json'):
+            await ctx.send("❌ Config file not found.")
+            return
+
+        with open('config.json', 'r') as f:
+            config_data = json.load(f)
+
+        # Create embed to display role IDs
+        embed = discord.Embed(
+            title="📋 Role IDs in Config",
+            description="List of role IDs configured for each server.",
+            color=discord.Color.blue()
+        )
+
+        # Add role IDs for each server
+        for server_id, server_config in config_data.items():
+            try:
+                role_ids = server_config.get('allowed_role_ids', [])
+                if role_ids:
+                    embed.add_field(
+                        name=f"Server: {server_id}",
+                        value="\n".join([f"<@&{role_id}> (`{role_id}`)" for role_id in role_ids]),
+                        inline=False
+                    )
+            except Exception as e:
+                logging.error(f"Error parsing config for server {server_id}: {str(e)}")
+
+        if not embed.fields:
+            embed.description = "❌ No role IDs found in config."
+
+        await ctx.send(embed=embed)
+
+    except Exception as e:
+        await ctx.send("❌ An error occurred while fetching role IDs.")
+        logging.error(f"PrintRoleIDs error: {str(e)}")
+
+
 # Start monitoring when bot is ready
 @bot.event
 async def on_ready():
