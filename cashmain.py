@@ -2040,102 +2040,158 @@ def save_config(config):
 command_latency = {}
 sales_activity = {}
 
-class DashboardView(ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @ui.button(label="Toggle Checkticket", style=ButtonStyle.blurple)
-    async def toggle_checkticket(self, interaction: discord.Interaction, button: Button):
-        """Toggle the checkticket command"""
-        config = load_config()
-        config['checkticket'] = not config.get('checkticket', True)
-        save_config(config)
-        await interaction.response.send_message(
-            f"✅ Checkticket command is now **{'enabled' if config['checkticket'] else 'disabled'}**.",
-            ephemeral=True
-        )
-
-    @ui.button(label="Advanced Metrics", style=ButtonStyle.blurple, emoji="📈", row=1)
-    async def show_metrics(self, interaction: discord.Interaction, button: Button):
-        try:
-            cpu = psutil.cpu_percent(interval=1)
-            memory = psutil.virtual_memory()
-            disk = psutil.disk_usage('/')
-            net_io = psutil.net_io_counters()
-            
-            uptime = datetime.now() - start_time
-            avg_command_latency = sum(command_latency.values()) / len(command_latency) if command_latency else 0
-            today_sales = sum(v['total'] for v in daily_messages.get(datetime.now().date(), {}).values())
-            
-            embed = discord.Embed(title="🤖 REALTIME BOT METRICS", color=0x00ff00)
-            
-            embed.add_field(name="🖥️ System Resources",
-                          value=(f"```prolog\nCPU: {cpu}%\nRAM: {memory.percent}% "
-                                 f"({memory.used/1e9:.1f}GB/{memory.total/1e9:.1f}GB)\nDisk: {disk.percent}% "
-                                 f"({disk.used/1e9:.1f}GB/{disk.total/1e9:.1f}GB)\nNetwork: "
-                                 f"↑{net_io.bytes_sent/1e6:.1f}MB ↓{net_io.bytes_recv/1e6:.1f}MB```"),
-                          inline=False)
-
-            embed.add_field(name="⚡ Bot Stats",
-                          value=(f"```prolog\nUptime: {str(uptime).split('.')[0]}\n"
-                                 f"Latency: {bot.latency*1000:.2f}ms\nAvg Cmd: {avg_command_latency:.2f}ms\n"
-                                 f"Threads: {threading.active_count()}```"),
-                          inline=False)
-
-            embed.add_field(name="💰 Sales Activity",
-                          value=(f"```prolog\nToday: ${today_sales:.2f}\n"
-                                 f"Tickets Checked: {ticket_stats['total']}\nActive Staff: {len(activity_log)}\n"
-                                 f"Top Seller: {max(activity_log, key=lambda x: activity_log[x].get('sales', 0)) if activity_log else 'N/A'}```"),
-                          inline=False)
-
-            await interaction.response.edit_message(embed=embed, view=self)
-        except Exception as e:
-            await interaction.response.send_message(f"Metrics error: {str(e)}", ephemeral=True)
-
-    @ui.button(label="Toggle Giftcard", style=ButtonStyle.blurple)
-    async def toggle_giftcard(self, interaction: discord.Interaction, button: Button):
-        """Toggle the giftcard command"""
-        config = load_config()
-        config['giftcard'] = not config.get('giftcard', True)
-        save_config(config)
-        await interaction.response.send_message(
-            f"✅ Giftcard command is now **{'enabled' if config['giftcard'] else 'disabled'}**.",
-            ephemeral=True
-        )
-
-    @ui.button(label="View Config", style=ButtonStyle.green)
-    async def view_config(self, interaction: discord.Interaction, button: Button):
-        """Display the current configuration"""
-        config = load_config()
-        embed = discord.Embed(
-            title="📋 Bot Configuration",
-            description="Current status of bot features:",
-            color=discord.Color.blue()
-        )
-        for feature, status in config.items():
-            embed.add_field(name=feature, value="✅ Enabled" if status else "❌ Disabled", inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-@bot.event
-async def on_command_completion(ctx):
-    command_latency[ctx.command.name] = time.time() - ctx.message.created_at.timestamp()
-    if ctx.command.name == "checkticket":
-        try:
-            user_id = str(ctx.author.id)
-            amount = float(ctx.args[1])
-            sales_activity[user_id] = sales_activity.get(user_id, 0) + amount
-        except:
-            pass
-
+# ====== UPDATED DASHBOARD COMMAND ======
 @bot.command(name='dashboard')
 async def dashboard(ctx):
-    """Display the bot control dashboard (Owner only)"""
+    """Display advanced management dashboard (Owner only)"""
     if str(ctx.author.id) not in OWNER_IDS:
-        await ctx.send("⛔ This command is restricted to bot owners.")
-        return
-    view = DashboardView()
-    await ctx.send("**Bot Dashboard**\nUse the buttons below to control the bot:", view=view)
+        return await ctx.send("⛔ Insufficient permissions", ephemeral=True)
 
+    embed = discord.Embed(
+        title="🛠️ **Bot Control Center**",
+        description="Real-time monitoring and system control",
+        color=0x2b2d31
+    ).set_thumbnail(url=bot.user.avatar.url)
+
+    view = DashboardView()
+    await ctx.send(embed=embed, view=view)
+
+# ====== ENHANCED DASHBOARD VIEW ======
+class DashboardView(ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+        self.message = None
+
+    async def on_timeout(self):
+        if self.message:
+            await self.message.edit(view=None)
+
+    @ui.button(label="System Health", style=ButtonStyle.gray, emoji="🖥️", row=0)
+    async def system_health(self, interaction: discord.Interaction, button: ui.Button):
+        """Real-time hardware monitoring"""
+        try:
+            # System diagnostics
+            cpu = psutil.cpu_percent(interval=1)
+            mem = psutil.virtual_memory()
+            disk = psutil.disk_usage('/')
+            net = psutil.net_io_counters()
+            temps = psutil.sensors_temperatures()
+            
+            # Format temperature data
+            cpu_temp = next(iter(temps.values()))[0].current if temps else "N/A"
+
+            embed = discord.Embed(title="🖥️ **System Monitor**", color=0x5865f2)
+            embed.add_field(name="CPU", value=f"{cpu}% | {cpu_temp}°C", inline=True)
+            embed.add_field(name="Memory", value=f"{mem.percent}% ({mem.used/1e9:.1f}GB)", inline=True)
+            embed.add_field(name="Disk", value=f"{disk.percent}% ({disk.used/1e9:.1f}GB)", inline=True)
+            embed.add_field(name="Network", 
+                          value=f"▲ {net.bytes_sent/1e6:.1f}MB\n▼ {net.bytes_recv/1e6:.1f}MB", 
+                          inline=True)
+            
+            await interaction.response.edit_message(embed=embed)
+        except Exception as e:
+            await self.handle_error(interaction, e)
+
+    @ui.button(label="Bot Analytics", style=ButtonStyle.gray, emoji="📊", row=0)
+    async def bot_analytics(self, interaction: discord.Interaction, button: ui.Button):
+        """Performance metrics and statistics"""
+        try:
+            uptime = timedelta(seconds=time.time()-start_time)
+            guild_count = len(bot.guilds)
+            user_count = sum(g.member_count for g in bot.guilds)
+            
+            embed = discord.Embed(title="📈 **Performance Metrics**", color=0xeb459e)
+            embed.add_field(name="Uptime", value=str(uptime).split('.')[0], inline=True)
+            embed.add_field(name="Latency", value=f"{bot.latency*1000:.2f}ms", inline=True)
+            embed.add_field(name="Servers", value=guild_count, inline=True)
+            embed.add_field(name="Users", value=f"{user_count:,}", inline=True)
+            embed.add_field(name="Active Commands", value=f"{threading.active_count()}", inline=True)
+            embed.add_field(name="CPU Threads", value=f"{psutil.cpu_count()}", inline=True)
+            
+            await interaction.response.edit_message(embed=embed)
+        except Exception as e:
+            await self.handle_error(interaction, e)
+
+    @ui.button(label="Sales Control", style=ButtonStyle.green, emoji="💰", row=1)
+    async def sales_control(self, interaction: discord.Interaction, button: ui.Button):
+        """Sales monitoring and management"""
+        try:
+            # 24-hour sales data
+            cutoff = time.time() - 86400
+            recent_sales = {k:v for k,v in sales_activity.items() if v[0] > cutoff}
+            
+            embed = discord.Embed(title="💸 **Sales Dashboard**", color=0x57f287)
+            embed.add_field(name="24h Revenue", value=f"${sum(v[1] for v in recent_sales.values()):.2f}", inline=True)
+            embed.add_field(name="Tickets Checked", value=ticket_stats['total'], inline=True)
+            embed.add_field(name="Avg. Ticket", 
+                          value=f"${sum(ticket_stats['amounts'])/len(ticket_stats['amounts']):.2f}" 
+                          if ticket_stats['amounts'] else "N/A", inline=True)
+            
+            # Top performer calculation
+            if recent_sales:
+                top_seller_id = max(recent_sales, key=lambda k: recent_sales[k][1])
+                top_seller = await bot.fetch_user(int(top_seller_id))
+                embed.add_field(name="Top Performer", value=f"{top_seller.mention}\n${recent_sales[top_seller_id][1]:.2f}", inline=True)
+            
+            await interaction.response.edit_message(embed=embed)
+        except Exception as e:
+            await self.handle_error(interaction, e)
+
+    @ui.button(label="Feature Toggles", style=ButtonStyle.blurple, emoji="⚙️", row=1)
+    async def feature_toggles(self, interaction: discord.Interaction, button: ui.Button):
+        """Manage enabled features"""
+        view = ToggleView()
+        await interaction.response.send_message("**Feature Management**", view=view, ephemeral=True)
+
+    @ui.button(label="Power Controls", style=ButtonStyle.red, emoji="🔌", row=2)
+    async def power_controls(self, interaction: discord.Interaction, button: ui.Button):
+        """System power management"""
+        view = PowerView()
+        await interaction.response.send_message("**Power Management**", view=view, ephemeral=True)
+
+    async def handle_error(self, interaction: discord.Interaction, error: Exception):
+        error_msg = f"🚨 Dashboard Error: {str(error)}"
+        await interaction.response.send_message(error_msg, ephemeral=True)
+        print(f"DASHBOARD ERROR: {error}")
+
+# ====== SUPPORTING VIEWS ======
+class ToggleView(ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+        self.add_item(FeatureSelect())
+
+class FeatureSelect(ui.Select):
+    def __init__(self):
+        options = [
+            discord.SelectOption(label="Toggle Checkticket", emoji="🎫", value="checkticket"),
+            discord.SelectOption(label="Toggle Giftcard", emoji="🎁", value="giftcard"),
+            discord.SelectOption(label="Toggle AutoRestart", emoji="🔄", value="autorestart")
+        ]
+        super().__init__(placeholder="Select feature to toggle...", options=options, min_values=1, max_values=1)
+
+    async def callback(self, interaction: discord.Interaction):
+        config = load_config()
+        feature = self.values[0]
+        config[feature] = not config.get(feature, True)
+        save_config(config)
+        await interaction.response.send_message(
+            f"✅ {feature.title()} {'enabled' if config[feature] else 'disabled'}",
+            ephemeral=True
+        )
+
+class PowerView(ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+        
+    @ui.button(label="Restart Bot", style=ButtonStyle.gray, emoji="🔄")
+    async def restart_bot(self, interaction: discord.Interaction, button: ui.Button):
+        await interaction.response.send_message("🔄 Restarting bot...")
+        os.execv(sys.executable, ['python'] + sys.argv)
+
+    @ui.button(label="Shutdown", style=ButtonStyle.red, emoji="⏏️")
+    async def shutdown(self, interaction: discord.Interaction, button: ui.Button):
+        await interaction.response.send_message("🔴 Shutting down...")
+        await bot.close()
 # Start monitoring when bot is ready
 @bot.event
 async def on_ready():
