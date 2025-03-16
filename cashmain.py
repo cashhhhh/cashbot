@@ -263,8 +263,7 @@ try:
            spike_embed = discord.Embed(
                title="🚨 Traffic Alert",
                description=f"{len(checkticket_timestamps)} checks in {TIME_WINDOW}s",
-               color=discord.Color.red()
-           )
+               color=discord.Color.red(   )
            
            # Alert sending logic
            for user_id in ALERT_USER_IDS:
