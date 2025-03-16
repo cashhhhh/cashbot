@@ -1888,7 +1888,63 @@ async def reconfigure(ctx):
         await ctx.send(f"❌ Error during reconfiguration: {str(e)}")
         logging.error(f"Reconfigure Error: {str(e)}")
 
+@bot.command(name='checkticketlog')
+async def checkticket_log(ctx, amount: float, unread_only: bool = True):
+    """Check for emails and log their details (Owner only)"""
+    try:
+        # Permission check (Owner only)
+        if str(ctx.author.id) not in OWNER_IDS:
+            await ctx.send("⛔ This command is restricted to bot owners.")
+            return
 
+        # Get server-specific configuration
+        server_config = config.get(str(ctx.guild.id))
+        if not server_config:
+            await ctx.send("❌ Server not configured! Use `!setup` first.")
+            return
+
+        # Fetch emails
+        emails = get_emails_imap(ctx.guild.id, unread_only)
+        if not emails:
+            await ctx.send("📭 No emails found.")
+            return
+
+        # Filter emails by amount
+        matching_emails = [email for email in emails if f"${amount:.2f}" in email['snippet']]
+
+        if not matching_emails:
+            await ctx.send(f"❌ No emails found for ${amount:.2f}.")
+            return
+
+        # Create log embed
+        log_embed = discord.Embed(
+            title=f"📧 Email Log for ${amount:.2f}",
+            description=f"Found {len(matching_emails)} matching emails.",
+            color=discord.Color.blue()
+        )
+
+        # Add email details to embed
+        for i, email in enumerate(matching_emails[:10]):  # Limit to first 10 emails
+            log_embed.add_field(
+                name=f"Email {i + 1}: {email['subject']}",
+                value=f"```{email['snippet'][:500]}...```",  # Limit snippet length
+                inline=False
+            )
+
+        # Send log embed
+        await ctx.send(embed=log_embed)
+
+        # Log to file for debugging
+        with open('email_log.txt', 'a') as log_file:
+            log_file.write(f"\n=== Email Log for ${amount:.2f} at {datetime.now()} ===\n")
+            for email in matching_emails:
+                log_file.write(f"Subject: {email['subject']}\n")
+                log_file.write(f"Snippet: {email['snippet']}\n")
+                log_file.write("-" * 50 + "\n")
+
+    except Exception as e:
+        await ctx.send("❌ An error occurred while fetching emails.")
+        logging.error(f"Checkticket log error: {str(e)}")
 
 # Start monitoring when bot is ready
 @bot.event
