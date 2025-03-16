@@ -257,7 +257,7 @@ async def checkticket(ctx, amount: float, unread_only: bool = True):
             except Exception as e:
                  logging.error(f"Failed to send traffic alert to {user_id}: {str(e)}")
 
-   try:
+try:
        # Traffic spike detection
        if len(checkticket_timestamps) >= SPIKE_THRESHOLD:
            spike_embed = discord.Embed(
