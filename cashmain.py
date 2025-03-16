@@ -1992,6 +1992,104 @@ async def print_role_ids(ctx):
         await ctx.send("❌ An error occurred while fetching role IDs.")
         logging.error(f"PrintRoleIDs error: {str(e)}")
 
+import discord
+from discord import ui, ButtonStyle
+import json
+
+# Configuration file
+CONFIG_FILE = 'config.json'
+
+# Helper functions for config
+def load_config():
+    """Load the bot configuration from config.json"""
+    try:
+        with open(CONFIG_FILE, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+def save_config(config):
+    """Save the bot configuration to config.json"""
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump(config, f, indent=4)
+
+# Dashboard UI
+class DashboardView(ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)  # No timeout
+
+    @ui.button(label="Toggle Checkticket", style=ButtonStyle.blurple)
+    async def toggle_checkticket(self, interaction: discord.Interaction, button: ui.Button):
+        """Toggle the checkticket command"""
+        config = load_config()
+        config['checkticket'] = not config.get('checkticket', True)
+        save_config(config)
+
+        await interaction.response.send_message(
+            f"✅ Checkticket command is now **{'enabled' if config['checkticket'] else 'disabled'}**.",
+            ephemeral=True
+        )
+
+    @ui.button(label="Toggle Giftcard", style=ButtonStyle.blurple)
+    async def toggle_giftcard(self, interaction: discord.Interaction, button: ui.Button):
+        """Toggle the giftcard command"""
+        config = load_config()
+        config['giftcard'] = not config.get('giftcard', True)
+        save_config(config)
+
+        await interaction.response.send_message(
+            f"✅ Giftcard command is now **{'enabled' if config['giftcard'] else 'disabled'}**.",
+            ephemeral=True
+        )
+
+    @ui.button(label="View Config", style=ButtonStyle.green)
+    async def view_config(self, interaction: discord.Interaction, button: ui.Button):
+        """Display the current configuration"""
+        config = load_config()
+        embed = discord.Embed(
+            title="📋 Bot Configuration",
+            description="Current status of bot features:",
+            color=discord.Color.blue()
+        )
+        for feature, status in config.items():
+            embed.add_field(name=feature, value="✅ Enabled" if status else "❌ Disabled", inline=False)
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+# Dashboard command
+@bot.command(name='dashboard')
+async def dashboard(ctx):
+    """Display the bot control dashboard (Owner only)"""
+    if str(ctx.author.id) not in OWNER_IDS:
+        await ctx.send("⛔ This command is restricted to bot owners.")
+        return
+
+    # Create the dashboard view
+    view = DashboardView()
+    await ctx.send("**Bot Dashboard**\nUse the buttons below to control the bot:", view=view)
+
+# Update commands to check config
+@bot.command(name='checkticket')
+async def checkticket(ctx, amount: float):
+    """Check for emails with a specific gift card amount"""
+    config = load_config()
+    if not config.get('checkticket', True):
+        await ctx.send("❌ The checkticket command is currently disabled.")
+        return
+
+    # Your existing checkticket logic here...
+    await ctx.send(f"Checking for ${amount:.2f} gift cards...")
+
+@bot.command(name='giftcard')
+async def giftcard(ctx, amount: float):
+    """Get gift card codes from emails"""
+    config = load_config()
+    if not config.get('giftcard', True):
+        await ctx.send("❌ The giftcard command is currently disabled.")
+        return
+
+    # Your existing giftcard logic here...
+    await ctx.send(f"Fetching ${amount:.2f} gift card codes...")
 
 # Start monitoring when bot is ready
 @bot.event
