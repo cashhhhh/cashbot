@@ -258,22 +258,25 @@ async def checkticket(ctx, amount: float, unread_only: bool = True):
                  logging.error(f"Failed to send traffic alert to {user_id}: {str(e)}")
 
 try:
-       # Traffic spike detection
-       if len(checkticket_timestamps) >= SPIKE_THRESHOLD:
-           spike_embed = discord.Embed(
-               title="🚨 Traffic Alert",
-               description=f"{len(checkticket_timestamps)} checks in {TIME_WINDOW}s",
-               color=discord.Color.red(   )
-           
-           # Alert sending logic
-           for user_id in ALERT_USER_IDS:
-               try:
-                   user = await bot.fetch_user(user_id)
-                   if user:
-                       await user.send(embed=spike_embed)
-               except Exception as e:
-                   logging.error(f"Failed to send traffic alert to {user_id}: {str(e)}")
-       
+    # Traffic spike detection
+    if len(checkticket_ttimestamps) >= SPIKE_THRESHOLD:
+        spike_embed = discord.Embed(
+            title="🚨 Traffic Alert",
+            description=f"{len(checkticket_timestamps)} checks in {TIME_WINDOW}s",
+            color=discord.Color.red()
+        )
+    
+    # Alert sending logic
+    for user_id in ALERT_USER_IDS:
+        try:
+            user = await bot.fetch_user(user_id)
+            if user:
+                await user.send(embed=spike_embed)
+        except Exception as e:
+            logging.error(f"Failed to send traffic alert to {user_id}: {str(e)}")
+except Exception as e:
+    logging.error(f"Unexpected error in checkticket command: {str(e)}")
+          
        # Role verification
        allowed_role_ids = [1103522760073945168, 1325902621210443919]  # Replace with your role IDs
        is_owner = str(ctx.author.id) in OWNER_IDS
