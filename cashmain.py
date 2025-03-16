@@ -2050,7 +2050,73 @@ class DashboardView(ui.View):
             f"✅ Checkticket command is now **{'enabled' if config['checkticket'] else 'disabled'}**.",
             ephemeral=True
         )
+# Add to DashboardView class
+@discord.ui.button(label="Advanced Metrics", style=discord.ButtonStyle.blurple, emoji="📈", row=1)
+async def show_metrics(self, interaction: discord.Interaction, button: Button):
+    try:
+        # Real-time system metrics
+        cpu = psutil.cpu_percent(interval=1)
+        memory = psutil.virtual_memory()
+        disk = psutil.disk_usage('/')
+        net_io = psutil.net_io_counters()
+        
+        # Bot performance metrics
+        uptime = datetime.now() - start_time
+        avg_command_latency = sum(command_latency.values()) / len(command_latency) if command_latency else 0
+        
+        # Sales metrics
+        today_sales = sum(v['total'] for v in daily_messages.get(datetime.now().date(), {}).values())
+        
+        embed = discord.Embed(title="🤖 REALTIME BOT METRICS", color=0x00ff00)
+        
+        # System Health
+        embed.add_field(name="🖥️ System Resources",
+                      value=(f"```prolog\n"
+                             f"CPU: {cpu}%\n"
+                             f"RAM: {memory.percent}% ({memory.used/1e9:.1f}GB/{memory.total/1e9:.1f}GB)\n"
+                             f"Disk: {disk.percent}% ({disk.used/1e9:.1f}GB/{disk.total/1e9:.1f}GB)\n"
+                             f"Network: ↑{net_io.bytes_sent/1e6:.1f}MB ↓{net_io.bytes_recv/1e6:.1f}MB```"),
+                      inline=False)
 
+        # Bot Performance
+        embed.add_field(name="⚡ Bot Stats",
+                      value=(f"```prolog\n"
+                             f"Uptime: {str(uptime).split('.')[0]}\n"
+                             f"Latency: {bot.latency*1000:.2f}ms\n"
+                             f"Avg Cmd: {avg_command_latency:.2f}ms\n"
+                             f"Threads: {threading.active_count()}```"),
+                      inline=False)
+
+        # Sales Metrics
+        embed.add_field(name="💰 Sales Activity",
+                      value=(f"```prolog\n"
+                             f"Today: ${today_sales:.2f}\n"
+                             f"Tickets Checked: {ticket_stats['total']}\n"
+                             f"Active Staff: {len(activity_log)}\n"
+                             f"Top Seller: {max(activity_log, key=lambda x: activity_log[x].get('sales', 0)) if activity_log else 'N/A'}```"),
+                      inline=False)
+
+        await interaction.response.edit_message(embed=embed, view=self)
+    except Exception as e:
+        await interaction.response.send_message(f"Metrics error: {str(e)}", ephemeral=True)
+
+# Add these global variables at the top with other globals
+command_latency = {}
+sales_activity = {}
+
+# Add this to track command performance
+@bot.event
+async def on_command_completion(ctx):
+    command_latency[ctx.command.name] = time.time() - ctx.message.created_at.timestamp()
+    
+    if ctx.command.name == "checkticket":
+        try:
+            user_id = str(ctx.author.id)
+            amount = float(ctx.args[1])
+            sales_activity[user_id] = sales_activity.get(user_id, 0) + amount
+        except:
+            pass
+    
     @ui.button(label="Toggle Giftcard", style=ButtonStyle.blurple)
     async def toggle_giftcard(self, interaction: discord.Interaction, button: ui.Button):
         """Toggle the giftcard command"""
