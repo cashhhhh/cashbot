@@ -257,34 +257,26 @@ async def checkticket(ctx, amount: float, unread_only: bool = True):
             except Exception as e:
     logging.error(f"Failed to send traffic alert to {user_id}: {str(e)}")
 
-    try:
-        # Traffic spike alert system
-        if len(checkticket_timestamps) >= SPIKE_THRESHOLD:
-            spike_embed = discord.Embed(
-                title="🚨 Traffic Alert",
-                description=f"{len(checkticket_timestamps)} checks in {TIME_WINDOW}s",
-                color=discord.Color.red()
-            )  # Added missing closing parenthesis
-            
-            # Add your alert sending logic here
-            # Example:
-            # for user_id in ALERT_USER_IDS:
-            #     await send_alert(user_id, spike_embed)
-
-    except Exception as e:
-        logging.error(f"Traffic alert error: {str(e)}")
+  try:
+    # Traffic spike detection
+    if len(checkticket_timestamps) >= SPIKE_THRESHOLD:
+        spike_embed = discord.Embed(
+            title="🚨 Traffic Alert",
+            description=f"{len(checkticket_timestamps)} checks in {TIME_WINDOW}s",
+            color=discord.Color.red()
+        )
         
-        # Properly indented loop
+        # Alert sending logic
         for user_id in ALERT_USER_IDS:
             try:
                 user = await bot.fetch_user(user_id)
                 if user:
                     await user.send(embed=spike_embed)
             except Exception as e:
-                logging.error(f"Alert failed for {user_id}: {str(e)}")
+                logging.error(f"Failed to send traffic alert to {user_id}: {str(e)}")
 
-    # Role verification (outside traffic check block)
-    allowed_role_ids = [1103522760073945168, 1325902621210443919]
+    # Role verification
+    allowed_role_ids = [1103522760073945168, 1325902621210443919]  # Replace with your role IDs
     is_owner = str(ctx.author.id) in OWNER_IDS
     has_role = any(role.id in allowed_role_ids for role in ctx.author.roles)
 
@@ -292,8 +284,8 @@ async def checkticket(ctx, amount: float, unread_only: bool = True):
         await ctx.send("⛔ Permission denied: Missing required role")
         return
 
-except Exception as e:  # Only if this is part of a larger try block
-    logging.error(f"Command error: {str(e)}"))
+except Exception as e:
+    logging.error(f"Unexpected error in checkticket command: {str(e)}")
 
     current_time = time.time()
     user_id = ctx.author.id
