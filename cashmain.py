@@ -255,7 +255,7 @@ async def checkticket(ctx, amount: float, unread_only: bool = True):
                 logging.error(
                     f"No permission to send traffic alert to user {user_id}")
             except Exception as e:
-    logging.error(f"Failed to send traffic alert to {user_id}: {str(e)}")
+                 logging.error(f"Failed to send traffic alert to {user_id}: {str(e)}")
 
   try:
     # Traffic spike detection
