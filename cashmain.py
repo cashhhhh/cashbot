@@ -1888,7 +1888,7 @@ async def reconfigure(ctx):
         await ctx.send(f"❌ Error during reconfiguration: {str(e)}")
         logging.error(f"Reconfigure Error: {str(e)}")
 
-@bot.command(name='checkticketlog')
+@bot.command(name='emaillog')
 async def checkticket_log(ctx, amount: float, unread_only: bool = True):
     """Check for emails and log their details (Owner only)"""
     try:
