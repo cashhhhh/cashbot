@@ -258,20 +258,27 @@ async def checkticket(ctx, amount: float, unread_only: bool = True):
                 logging.error(
                     f"Failed to send traffic alert to {user_id}: {e}")
 
-    except Exception as e:
-                logging.error(f"Failed to send traffic alert to {user_id}: {str(e)}")
+    try:
+    # Attempt to send alerts
+    for user_id in ALERT_USER_IDS:
+        try:
+            user = await bot.fetch_user(user_id)
+            if user:
+                await user.send(embed=spike_embed)
+        except Exception as e:
+            logging.error(f"Failed to send traffic alert to {user_id}: {str(e)}")
 
-    # Define allowed roles as a list of integers
-    allowed_role_ids = [1103522760073945168, 1325902621210443919]  # Use list format
-    
-    # Check permissions
+    # Role verification (outside try block)
+    allowed_role_ids = [1103522760073945168, 1325902621210443919]
     is_owner = str(ctx.author.id) in OWNER_IDS
-    has_role = any(role.id in allowed_role_ids for role in ctx.author.roles)  # Check against list
+    has_role = any(role.id in allowed_role_ids for role in ctx.author.roles)
 
     if not (is_owner or has_role):
-        await ctx.send("⛔ You don't have permission to use this command.\n"
-                      f"Required roles: {', '.join([f'<@&{rid}>' for rid in allowed_role_ids])}")
+        await ctx.send("You do not have permission to use this command.")
         return
+
+except Exception as e:  # Remove this outer except if unnecessary
+    logging.error(f"Unexpected error: {str(e)}")
 
     current_time = time.time()
     user_id = ctx.author.id
