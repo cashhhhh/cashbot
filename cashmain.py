@@ -2,6 +2,10 @@
 
 
 
+
+
+
+
 import os
 import pickle
 import logging
@@ -255,77 +259,16 @@ async def checkticket(ctx, amount: float, unread_only: bool = True):
                 logging.error(
                     f"No permission to send traffic alert to user {user_id}")
             except Exception as e:
-                 logging.error(f"Failed to send traffic alert to {user_id}: {str(e)}")
-try:
-    # Traffic spike detection
-    if len(checkticket_ttimestamps) >= SPIKE_THRESHOLD:
-        spike_embed = discord.Embed(
-            title="🚨 Traffic Alert",
-            description=f"{len(checkticket_timestamps)} checks in {TIME_WINDOW}s",
-            color=discord.Color.red()
-        )
-    
-    # Alert sending logic
-    for user_id in ALERT_USER_IDS:
-        try:
-            user = await bot.fetch_user(user_id)
-            if user:
-                await user.send(embed=spike_embed)
-        except Exception as e:
-            logging.error(f"Failed to send traffic alert to {user_id}: {str(e)}")
-except Exception as e:
-    logging.error(f"Unexpected error in checkticket command: {str(e)}")
-    current_time = time.time()
-    user_id = ctx.author.id
+                logging.error(
+                    f"Failed to send traffic alert to {user_id}: {e}")
 
-    if user_id not in wrong_attempts:
-        wrong_attempts[user_id] = []
+    allowed_role_id = 1103522760073945168,1325902621210443919
+    is_owner = str(ctx.author.id) in OWNER_IDS
+    has_role = any(role.id == allowed_role_id for role in ctx.author.roles)
 
-    wrong_attempts[user_id].append(current_time)
-    wrong_attempts[user_id] = [
-        t for t in wrong_attempts[user_id] if current_time - t < 300
-    ]
-
-    if len(wrong_attempts[user_id]) >= 4:
-        fraud_msg = f"ALERT: Possible fraud detected from user {ctx.author}. Four incorrect attempts detected."
-        alert_channel = bot.get_channel(ALERT_CHANNEL_ID)
-        await alert_channel.send(fraud_msg)
-        await notify_owner(fraud_msg)
-        await ctx.send(
-            "You have exceeded the allowed number of attempts. Fraud is being investigated."
-        )
+    if not (is_owner or has_role):
+        await ctx.send("You do not have permission to use this command.")
         return
-
-allowed_role_ids = [1103522760073945168, 1325902621210443919]  # Replace with your role IDs
-is_owner = str(ctx.author.id) in OWNER_IDS
-has_role = any(role.id in allowed_role_ids for role in ctx.author.roles)
-
-if not (is_owner or has_role):
-    await ctx.send("⛔ Permission denied: Missing required role")
-    return
-    
-   except Exception as e:
-       logging.error(f"Unexpected error in checkticket command: {str(e)}")
-       current_time = time.time()
-       user_id = ctx.author.id
-
-       if user_id not in wrong_attempts:
-           wrong_attempts[user_id] = []
-
-       wrong_attempts[user_id].append(current_time)
-       wrong_attempts[user_id] = [
-           t for t in wrong_attempts[user_id] if current_time - t < 300
-       ]
-
-       if len(wrong_attempts[user_id]) >= 4:
-           fraud_msg = f"ALERT: Possible fraud detected from user {ctx.author}. Four incorrect attempts detected."
-           alert_channel = bot.get_channel(ALERT_CHANNEL_ID)
-           await alert_channel.send(fraud_msg)
-           await notify_owner(fraud_msg)
-           await ctx.send(
-               "You have exceeded the allowed number of attempts. Fraud is being investigated."
-           )
-           return
 
     current_time = time.time()
     user_id = ctx.author.id
@@ -1965,5 +1908,6 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         logging.info("Shutting down bot...")
     except Exception as e:
+        logging.error(f"Main thread error: {e}")
         logging.error(f"Main thread error: {e}")
         logging.error(f"Main thread error: {e}")
