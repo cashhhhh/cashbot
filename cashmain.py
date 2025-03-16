@@ -2192,6 +2192,180 @@ class PowerView(ui.View):
     async def shutdown(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.send_message("🔴 Shutting down...")
         await bot.close()
+
+# ====== IMPORTS ======
+import discord
+from discord.ext import commands
+import os
+import json
+import subprocess
+from datetime import datetime
+from ipaddress import ip_address
+
+# ====== GLOBALS ======
+LOCKDOWN_MODE = False
+ACTIVITY_LOG = {}
+IP_LOG = {}
+VERSION_HASH = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('ascii').strip()
+
+# ====== MODERATION COMMANDS ======
+@bot.command(name='lockdown')
+@commands.is_owner()
+async def lockdown(ctx, state: bool):
+    """🔒 Enable/disable emergency lockdown mode"""
+    global LOCKDOWN_MODE
+    LOCKDOWN_MODE = state
+    
+    await ctx.send(f"🛑 **LOCKDOWN {'ACTIVATED' if state else 'DEACTIVATED'}**\n"
+                   f"All non-essential commands are now {'disabled' if state else 'enabled'}.")
+    
+    # Log lockdown state change
+    log_security_event(
+        user_id=ctx.author.id,
+        action=f"Lockdown {state}",
+        severity="CRITICAL"
+    )
+
+@bot.command(name='activitylog')
+@commands.is_owner()
+async def activity_log(ctx, user: discord.User):
+    """📜 Get full activity history for a user"""
+    embed = discord.Embed(
+        title=f"Activity Log for {user.name}",
+        description=f"Total events: {len(ACTIVITY_LOG.get(str(user.id), [])}",
+        color=0x5865f2
+    )
+    
+    for entry in ACTIVITY_LOG.get(str(user.id), []):
+        embed.add_field(
+            name=entry['timestamp'],
+            value=f"**{entry['action']}**\n{entry.get('details', '')}",
+            inline=False
+        )
+    
+    await ctx.send(embed=embed)
+
+@bot.command(name='iplog')
+@commands.is_owner()
+async def ip_log(ctx):
+    """🌐 View suspicious IP activity"""
+    suspicious_ips = [ip for ip, data in IP_LOG.items() if data['count'] > 5]
+    
+    embed = discord.Embed(
+        title="Suspicious IP Activity",
+        description=f"Total tracked IPs: {len(IP_LOG)}",
+        color=0xeb459e
+    )
+    
+    for ip in suspicious_ips[:25]:
+        embed.add_field(
+            name=ip,
+            value=f"**Attempts**: {IP_LOG[ip]['count']}\n"
+                  f"Last Seen: {IP_LOG[ip]['last_seen']}",
+            inline=False
+        )
+    
+    await ctx.send(embed=embed)
+
+@bot.command(name='versioncheck')
+@commands.is_owner()
+async def version_check(ctx):
+    """🔗 Verify system version integrity"""
+    current_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('ascii').strip()
+    
+    embed = discord.Embed(
+        title="Version Integrity Check",
+        color=0x57f287 if current_hash == VERSION_HASH else 0xed4245
+    )
+    
+    embed.add_field(name="Expected Hash", value=VERSION_HASH, inline=False)
+    embed.add_field(name="Current Hash", value=current_hash, inline=False)
+    embed.add_field(name="Status", 
+                    value="✅ Verified" if current_hash == VERSION_HASH else "❌ Compromised",
+                    inline=False)
+    
+    await ctx.send(embed=embed)
+
+@bot.command(name='audit')
+@commands.is_owner()
+async def audit_log(ctx, days: int = 7):
+    """📂 Export security audit log"""
+    cutoff = datetime.now() - timedelta(days=days)
+    log_entries = []
+    
+    with open('security.log', 'r') as f:
+        for line in f:
+            timestamp = datetime.fromisoformat(line.split('|')[0].strip())
+            if timestamp > cutoff:
+                log_entries.append(line)
+    
+    with open('audit_export.log', 'w') as f:
+        f.writelines(log_entries[-1000:])  # Limit to last 1000 lines
+    
+    await ctx.send(file=discord.File('audit_export.log'))
+
+# ====== SECURITY INFRASTRUCTURE ======
+def log_security_event(user_id: int, action: str, severity: str = "INFO", ip: str = None):
+    """Centralized security logging"""
+    timestamp = datetime.now().isoformat()
+    log_entry = f"{timestamp} | {severity} | {user_id} | {action}"
+    
+    if ip:
+        log_entry += f" | {ip}"
+        IP_LOG[ip] = {
+            'count': IP_LOG.get(ip, {'count': 0})['count'] + 1,
+            'last_seen': timestamp
+        }
+    
+    # Append to security log
+    with open('security.log', 'a') as f:
+        f.write(log_entry + "\n")
+    
+    # Update activity log
+    user_log = ACTIVITY_LOG.get(str(user_id), [])
+    user_log.append({
+        'timestamp': timestamp,
+        'action': action,
+        'severity': severity
+    })
+    ACTIVITY_LOG[str(user_id)] = user_log[-100:]  # Keep last 100 entries
+
+@bot.event
+async def on_command(ctx):
+    """Security middleware for all commands"""
+    # Block commands during lockdown
+    if LOCKDOWN_MODE and ctx.author.id not in OWNER_IDS:
+        await ctx.send("🔒 Command blocked - lockdown mode active")
+        log_security_event(
+            user_id=ctx.author.id,
+            action=f"Command blocked: {ctx.command.name}",
+            severity="WARNING"
+        )
+        return
+    
+    # Log command execution
+    log_security_event(
+        user_id=ctx.author.id,
+        action=f"Command executed: {ctx.command.name}",
+        severity="INFO",
+        ip=ctx.message.created_at.timestamp()  # Simulated IP tracking
+    )
+
+@bot.event
+async def on_command_error(ctx, error):
+    """Centralized error handling"""
+    log_security_event(
+        user_id=ctx.author.id,
+        action=f"Command error: {str(error)}",
+        severity="ERROR"
+    )
+    
+    if isinstance(error, commands.CommandNotFound):
+        await ctx.send("❌ Invalid command")
+    elif isinstance(error, commands.MissingPermissions):
+        await ctx.send("⛔ Insufficient permissions")
+    else:
+        await ctx.send(f"⚠️ Error: {str(error)}")
 # Start monitoring when bot is ready
 @bot.event
 async def on_ready():
