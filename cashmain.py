@@ -2013,6 +2013,27 @@ def save_config(config):
     with open(CONFIG_FILE, 'w') as f:
         json.dump(config, f, indent=4)
 
+import discord
+from discord import ui, ButtonStyle
+import json
+
+# Configuration file
+CONFIG_FILE = 'config.json'
+
+# Helper functions for config
+def load_config():
+    """Load the bot configuration from config.json"""
+    try:
+        with open(CONFIG_FILE, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+def save_config(config):
+    """Save the bot configuration to config.json"""
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump(config, f, indent=4)
+
 # Dashboard UI
 class DashboardView(ui.View):
     def __init__(self):
@@ -2067,29 +2088,6 @@ async def dashboard(ctx):
     # Create the dashboard view
     view = DashboardView()
     await ctx.send("**Bot Dashboard**\nUse the buttons below to control the bot:", view=view)
-
-# Update commands to check config
-@bot.command(name='checkticket')
-async def checkticket(ctx, amount: float):
-    """Check for emails with a specific gift card amount"""
-    config = load_config()
-    if not config.get('checkticket', True):
-        await ctx.send("❌ The checkticket command is currently disabled.")
-        return
-
-    # Your existing checkticket logic here...
-    await ctx.send(f"Checking for ${amount:.2f} gift cards...")
-
-@bot.command(name='giftcard')
-async def giftcard(ctx, amount: float):
-    """Get gift card codes from emails"""
-    config = load_config()
-    if not config.get('giftcard', True):
-        await ctx.send("❌ The giftcard command is currently disabled.")
-        return
-
-    # Your existing giftcard logic here...
-    await ctx.send(f"Fetching ${amount:.2f} gift card codes...")
 
 # Start monitoring when bot is ready
 @bot.event
