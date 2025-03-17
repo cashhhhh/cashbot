@@ -2232,7 +2232,7 @@ async def activity_log(ctx, user: discord.User):
     """📜 Get full activity history for a user"""
     embed = discord.Embed(
         title=f"Activity Log for {user.name}",
-        description=f"Total events: {len(ACTIVITY_LOG.get(str(user.id), [])}",
+        description=f"Total events: {len(ACTIVITY_LOG.get(str(user.id), []))}",
         color=0x5865f2
     )
     
