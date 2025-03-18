@@ -579,6 +579,61 @@ async def stats(ctx):
         await ctx.send("❌ Failed to retrieve statistics. Check system permissions!")
         await notify_owner(f"Stats command failed: {str(e)}")
 
+# Add to global variables
+INACTIVE_THRESHOLD = 20  # Days
+TICKET_LOGS_CHANNEL_ID = 1103526122211262565
+SALES_TEAM_ROLE_ID = 1103522760073945168
+
+# Add this function
+async def check_inactive_sellers(warning_channel):
+    """Check for sellers with no activity in last 20 days"""
+    try:
+        # Get ticket logs channel
+        channel = bot.get_channel(TICKET_LOGS_CHANNEL_ID)
+        if not channel:
+            return await warning_channel.send("❌ Ticket logs channel not found")
+        
+        # Get messages from last 20 days
+        cutoff = datetime.now() - timedelta(days=INACTIVE_THRESHOLD)
+        active_sellers = set()
+        
+        async for message in channel.history(after=cutoff):
+            if message.author.bot:
+                continue
+            active_sellers.add(message.author.id)
+        
+        # Get sales team role
+        seller_role = discord.utils.get(channel.guild.roles, id=SALES_TEAM_ROLE_ID)
+        if not seller_role:
+            return await warning_channel.send("❌ Sales team role not found")
+        
+        # Find inactive sellers
+        inactive_sellers = [
+            member for member in seller_role.members 
+            if member.id not in active_sellers 
+            and str(member.id) not in OWNER_IDS
+        ]
+        
+        # Send warnings
+        if not inactive_sellers:
+            return await warning_channel.send("✅ All sellers are active!")
+            
+        for seller in inactive_sellers:
+            await warning_channel.send(
+                f"⚠️ {seller.mention} You haven't made any sales in the last {INACTIVE_THRESHOLD} days. "
+                "Please contact a manager if there are any issues."
+            )
+            
+    except Exception as e:
+        await warning_channel.send(f"❌ Error checking inactive sellers: {e}")
+
+# Add this command
+@bot.command(name='checkinactive')
+@commands.is_owner()
+async def check_inactive(ctx):
+    """Check for inactive sellers and warn in this channel"""
+    await ctx.send("🔄 Checking for inactive sellers...")
+    await check_inactive_sellers(ctx.channel)
 
 @bot.command(aliases=['logs', 'r'])
 async def report(ctx, *, user: discord.Member = None):
