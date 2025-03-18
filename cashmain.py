@@ -2366,6 +2366,47 @@ async def on_command_error(ctx, error):
         await ctx.send("⛔ Insufficient permissions")
     else:
         await ctx.send(f"⚠️ Error: {str(error)}")
+
+@bot.command(name='push')
+@commands.is_owner()
+async def push_and_restart(ctx, commit_message: str = "Auto-commit by bot"):
+    """🚀 Full deployment cycle: Shutdown → Push → Restart"""
+    try:
+        # Step 1: Notify users
+        await ctx.send("🔄 Starting deployment process...")
+        
+        # Step 2: Save state
+        with open('bot_state.json', 'w') as f:
+            json.dump({
+                'last_command': ctx.command.name,
+                'timestamp': datetime.now().isoformat(),
+                'channel': ctx.channel.id
+            }, f)
+
+        # Step 3: Shutdown bot
+        await ctx.send("🔴 Shutting down bot...")
+        await bot.close()
+
+        # Step 4: Git operations (outside bot process)
+        subprocess.run(['git', 'add', '.'], check=True)
+        subprocess.run(['git', 'commit', '-m', commit_message], check=True)
+        push_result = subprocess.run(['git', 'push', 'origin', 'main'], 
+                                   capture_output=True, 
+                                   text=True, 
+                                   check=True)
+
+        # Step 5: Restart bot
+        tmux_restart_cmd = [
+            'tmux', 'send-keys', '-t', '0', 
+            'python3 cashmain.py', 'C-m'
+        ]
+        subprocess.run(tmux_restart_cmd, check=True)
+
+    except subprocess.CalledProcessError as e:
+        # Handle Git/tmux errors
+        error_msg = f"""🚨 Deployment Error:
+
+
 # Start monitoring when bot is ready
 @bot.event
 async def on_ready():
