@@ -2374,7 +2374,7 @@ async def push_and_restart(ctx, commit_message: str = "Auto-commit by bot"):
     try:
         # Step 1: Notify users
         await ctx.send("🔄 Starting deployment process...")
-        
+
         # Step 2: Save state
         with open('bot_state.json', 'w') as f:
             json.dump({
@@ -2395,7 +2395,7 @@ async def push_and_restart(ctx, commit_message: str = "Auto-commit by bot"):
                                    text=True, 
                                    check=True)
 
-        # Step 5: Restart bot
+        # Step 5: Restart bot in tmux
         tmux_restart_cmd = [
             'tmux', 'send-keys', '-t', '0', 
             'python3 cashmain.py', 'C-m'
