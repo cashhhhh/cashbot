@@ -5,7 +5,7 @@
 
 
 
-
+import re
 import os
 import pickle
 import logging
@@ -224,6 +224,74 @@ TIME_WINDOW = 60  # Time window in seconds
 ALERT_USER_IDS = [480028928329777163,
                   230803708034678786]  # Users to notify on spike
 
+# Add to imports
+import re
+
+# Update LOCATION_COORDS
+LOCATION_COORDS = {
+    # Format: "POSTAL": (x, y)
+    "LSIA123": (120, 450),
+    "VW456": (300, 200),
+    "SS789": (600, 350),
+    "PB012": (800, 100),
+    "DT345": (250, 300)
+}
+
+# Update seller_locations command
+@bot.command(name='sellerlocation')
+async def seller_locations(ctx):
+    """Display seller locations on GTA map using postal codes"""
+    try:
+        # Load GTA map
+        gta_map = Image.open(GTA_MAP_PATH)
+        plt.figure(figsize=(10, 10))
+        plt.imshow(gta_map)
+        
+        # Get seller role
+        seller_role = ctx.guild.get_role(SELLER_ROLE_ID)
+        if not seller_role:
+            return await ctx.send("❌ Seller role not found")
+        
+        # Track seller locations
+        sellers = []
+        for member in seller_role.members:
+            if member.activity and member.activity.type == discord.ActivityType.playing:
+                activity_name = member.activity.name
+                
+                # Extract street and postal code
+                match = re.search(r'standing on (\w+ \w+) \((\w+)\)', activity_name, re.IGNORECASE)
+                if match:
+                    street, postal = match.groups()
+                    if postal in LOCATION_COORDS:
+                        sellers.append({
+                            'name': member.display_name,
+                            'street': street,
+                            'postal': postal,
+                            'coordinates': LOCATION_COORDS[postal]
+                        })
+        
+        if not sellers:
+            return await ctx.send("❌ No active sellers found")
+        
+        # Plot seller locations
+        for seller in sellers:
+            x, y = seller['coordinates']
+            plt.plot(x, y, 'ro')  # Red dot
+            plt.text(x + 10, y + 10, 
+                    f"{seller['name']}\n{seller['street']}\n({seller['postal']})", 
+                    fontsize=8, color='white')
+        
+        # Save map
+        output_path = "seller_locations.png"
+        plt.axis('off')
+        plt.savefig(output_path, bbox_inches='tight', pad_inches=0, transparent=True)
+        plt.close()
+        
+        # Send map
+        await ctx.send(file=discord.File(output_path))
+        
+    except Exception as e:
+        await ctx.send(f"❌ Error generating map: {str(e)}")
 
 @bot.command(name='checkticket')
 async def checkticket(ctx, amount: float, unread_only: bool = True):
