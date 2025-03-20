@@ -478,19 +478,28 @@ async def seller_locations(ctx):
 
         # Check each member in the sales role
         for member in sales_role.members:
-            # Check if the member has an activity (game status)
-            if member.activity and member.activity.type == discord.ActivityType.playing:
-                activity_name = member.activity.name
+            # Log the member's name and activity for debugging
+            logging.info(f"Checking member: {member.display_name}")
+            if member.activity:
+                logging.info(f"Activity found: {member.activity.name} (Type: {member.activity.type})")
 
-                # Extract street name and postal code using regex
-                match = re.search(r'standing on (\w+ \w+) \((\w+)\)', activity_name, re.IGNORECASE)
+            # Check if the member has an activity (game status)
+            if member.activity and member.activity.type in [discord.ActivityType.playing, discord.ActivityType.streaming]:
+                activity_name = member.activity.name
+                logging.info(f"Game status: {activity_name}")
+
+                # Extract seller name, street name, and postal code using regex
+                match = re.search(r'(\w+) is standing on (\w+ \w+) \((\w+)\)', activity_name, re.IGNORECASE)
                 if match:
-                    street, postal = match.groups()
+                    seller_name, street, postal = match.groups()
                     sellers.append({
                         'name': member.display_name,
                         'street': street,
                         'postal': postal
                     })
+                    logging.info(f"Seller found: {member.display_name} - {street} ({postal})")
+                else:
+                    logging.info(f"No match found for: {activity_name}")
 
         # Check if any sellers were found
         if not sellers:
@@ -514,6 +523,116 @@ async def seller_locations(ctx):
     except Exception as e:
         await ctx.send(f"❌ Error fetching seller locations: {str(e)}")
 
+# Existing imports
+import json
+import os
+
+# File to store customer credits
+CREDITS_FILE = "credits.json"
+
+# Load credits from file
+if os.path.exists(CREDITS_FILE):
+    with open(CREDITS_FILE, "r") as f:
+        credits = json.load(f)
+else:
+    credits = {}
+
+# Function to save credits to file
+def save_credits():
+    with open(CREDITS_FILE, "w") as f:
+        json.dump(credits, f, indent=4)
+
+# Command: !credit add <user_id> <amount>
+@bot.command(name='creditadd')
+@commands.has_permissions(administrator=True)
+async def credit_add(ctx, user_id: str, amount: float):
+    """Add credit to a customer's account."""
+    try:
+        # Ensure the user ID is valid
+        user = await bot.fetch_user(int(user_id))
+        if not user:
+            await ctx.send("❌ User not found.")
+            return
+
+        # Add credit
+        if user_id in credits:
+            credits[user_id] += amount
+        else:
+            credits[user_id] = amount
+
+        # Save credits
+        save_credits()
+
+        await ctx.send(f"✅ Added ${amount:.2f} credit to {user.mention}. Total credit: ${credits[user_id]:.2f}")
+
+    except Exception as e:
+        await ctx.send(f"❌ Error adding credit: {str(e)}")
+
+# Command: !credit remove <user_id> <amount>
+@bot.command(name='creditremove')
+@commands.has_permissions(administrator=True)
+async def credit_remove(ctx, user_id: str, amount: float):
+    """Remove credit from a customer's account."""
+    try:
+        # Ensure the user ID is valid
+        user = await bot.fetch_user(int(user_id))
+        if not user:
+            await ctx.send("❌ User not found.")
+            return
+
+        # Check if the user has enough credit
+        if user_id not in credits or credits[user_id] < amount:
+            await ctx.send("❌ Insufficient credit.")
+            return
+
+        # Remove credit
+        credits[user_id] -= amount
+
+        # Save credits
+        save_credits()
+
+        await ctx.send(f"✅ Removed ${amount:.2f} credit from {user.mention}. Remaining credit: ${credits[user_id]:.2f}")
+
+    except Exception as e:
+        await ctx.send(f"❌ Error removing credit: {str(e)}")
+
+# Command: !credit check <user_id>
+@bot.command(name='creditcheck')
+async def credit_check(ctx, user_id: str):
+    """Check a customer's credit."""
+    try:
+        # Ensure the user ID is valid
+        user = await bot.fetch_user(int(user_id))
+        if not user:
+            await ctx.send("❌ User not found.")
+            return
+
+        # Get credit
+        credit = credits.get(user_id, 0.0)
+
+        await ctx.send(f"💰 {user.mention} has ${credit:.2f} credit.")
+
+    except Exception as e:
+        await ctx.send(f"❌ Error checking credit: {str(e)}")
+
+# Modify the on_message event to notify on ticket creation
+@bot.event
+async def on_message(message):
+    # Ignore messages from bots
+    if message.author.bot:
+        return
+
+    # Check if the message is in a ticket channel
+    if "ticket" in message.channel.name.lower():
+        # Check if the user has credit
+        user_id = str(message.author.id)
+        if user_id in credits and credits[user_id] > 0:
+            await message.channel.send(
+                f"🎉 {message.author.mention}, you have **${credits[user_id]:.2f}** credit available!"
+            )
+
+    # Process commands
+    await bot.process_commands(message)
 
 @bot.command()
 async def leaderboard(ctx):
