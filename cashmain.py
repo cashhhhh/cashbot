@@ -1,9 +1,5 @@
 
 
-# Add to imports
-import re
-from PIL import Image
-
 import re
 import os
 import pickle
@@ -225,89 +221,7 @@ ALERT_USER_IDS = [480028928329777163,
 
 
 
-# Add to global variables
-SELLER_ROLE_ID = 1103522760073945168  # Your seller role ID
-GTA_MAP_PATH = "gta_map.png"  # Path to your GTA map image
-LOCATION_COORDS = {
-    # Format: "POSTAL": (x, y)
-    "LSIA123": (120, 450),  # Los Santos International Airport
-    "VW456": (300, 200),    # Vinewood
-    "SS789": (600, 350),    # Sandy Shores
-    "PB012": (800, 100),    # Paleto Bay
-    "DT345": (250, 300)     # Downtown
-}
 
-# Add this command
-@bot.command(name='sellerlocation')
-async def seller_locations(ctx):
-    """Display seller locations on GTA map using postal codes"""
-    try:
-        # Load GTA map
-        gta_map = Image.open(GTA_MAP_PATH)
-        plt.figure(figsize=(10, 10))
-        plt.imshow(gta_map)
-        
-        # Get seller role
-        seller_role = ctx.guild.get_role(SELLER_ROLE_ID)
-        if not seller_role:
-            return await ctx.send("❌ Seller role not found")
-        
-        # Track seller locations
-        sellers = []
-        for member in seller_role.members:
-            if member.activity and member.activity.type == discord.ActivityType.playing:
-                activity_name = member.activity.name
-                
-                # Extract street and postal code
-                match = re.search(r'standing on (\w+ \w+) \((\w+)\)', activity_name, re.IGNORECASE)
-                if match:
-                    street, postal = match.groups()
-                    if postal in LOCATION_COORDS:
-                        sellers.append({
-                            'name': member.display_name,
-                            'street': street,
-                            'postal': postal,
-                            'coordinates': LOCATION_COORDS[postal]
-                        })
-        
-        if not sellers:
-            return await ctx.send("❌ No active sellers found")
-        
-        # Plot seller locations
-        for seller in sellers:
-            x, y = seller['coordinates']
-            plt.plot(x, y, 'ro')  # Red dot
-            plt.text(x + 10, y + 10, 
-                    f"{seller['name']}\n{seller['street']}\n({seller['postal']})", 
-                    fontsize=8, color='white')
-        
-        # Save map
-        output_path = "seller_locations.png"
-        plt.axis('off')
-        plt.savefig(output_path, bbox_inches='tight', pad_inches=0, transparent=True)
-        plt.close()
-        
-        # Send map
-        await ctx.send(file=discord.File(output_path))
-        
-    except Exception as e:
-        await ctx.send(f"❌ Error generating map: {str(e)}")
-
-# Add this helper function
-def generate_gta_map():
-    """Generate a sample GTA map if needed"""
-    from PIL import ImageDraw
-    img = Image.new('RGB', (1000, 1000), color='black')
-    draw = ImageDraw.Draw(img)
-    
-    # Draw landmarks
-    draw.ellipse((100, 400, 150, 450), fill='yellow')  # LSIA
-    draw.rectangle((250, 150, 350, 250), fill='blue')  # Vinewood
-    draw.polygon([(550, 300), (650, 300), (600, 400)], fill='green')  # Sandy Shores
-    draw.rectangle((750, 50, 850, 150), fill='red')  # Paleto Bay
-    draw.ellipse((200, 250, 300, 350), fill='purple')  # Downtown
-    
-    img.save("gta_map.png")
 
 
 @bot.command(name='checkticket')
