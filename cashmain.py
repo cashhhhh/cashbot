@@ -1,9 +1,9 @@
 
 
-
-
-
-
+# Add to imports
+import re
+import matplotlib.pyplot as plt
+from PIL import Image
 
 import re
 import os
@@ -224,10 +224,7 @@ TIME_WINDOW = 60  # Time window in seconds
 ALERT_USER_IDS = [480028928329777163,
                   230803708034678786]  # Users to notify on spike
 
-# Add to imports
-import re
-import matplotlib.pyplot as plt
-from PIL import Image
+
 
 # Add to global variables
 SELLER_ROLE_ID = 1103522760073945168  # Your seller role ID
