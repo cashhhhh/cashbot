@@ -284,8 +284,7 @@ async def seller_locations(ctx):
     except Exception as e:
         await ctx.send(f"❌ Error fetching seller locations: {str(e)}")
 
-# Existing bot.run() call
-bot.run('YOUR_DISCORD_TOKEN')
+
 
 
 
