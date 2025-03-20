@@ -2,7 +2,6 @@
 
 # Add to imports
 import re
-import matplotlib.pyplot as plt
 from PIL import Image
 
 import re
