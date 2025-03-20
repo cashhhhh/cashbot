@@ -463,6 +463,57 @@ Net Profit: ${net_profit:.2f}
 ```"""
     await ctx.send(profit_msg)
 
+@bot.command(name='sellerlocations')
+async def seller_locations(ctx):
+    """Display a list of seller locations and postal codes from their game status."""
+    try:
+        # Get the sales role
+        sales_role = ctx.guild.get_role(SALES_ROLE_ID)
+        if not sales_role:
+            await ctx.send("❌ Sales role not found.")
+            return
+
+        # Initialize a list to store seller locations
+        sellers = []
+
+        # Check each member in the sales role
+        for member in sales_role.members:
+            # Check if the member has an activity (game status)
+            if member.activity and member.activity.type == discord.ActivityType.playing:
+                activity_name = member.activity.name
+
+                # Extract street name and postal code using regex
+                match = re.search(r'standing on (\w+ \w+) \((\w+)\)', activity_name, re.IGNORECASE)
+                if match:
+                    street, postal = match.groups()
+                    sellers.append({
+                        'name': member.display_name,
+                        'street': street,
+                        'postal': postal
+                    })
+
+        # Check if any sellers were found
+        if not sellers:
+            await ctx.send("❌ No active sellers found.")
+            return
+
+        # Format the list of sellers
+        seller_list = "\n".join(
+            f"**{seller['name']}**: {seller['street']} ({seller['postal']})"
+            for seller in sellers
+        )
+
+        # Send the list in an embed
+        embed = discord.Embed(
+            title="📍 Seller Locations",
+            description=seller_list,
+            color=discord.Color.blue()
+        )
+        await ctx.send(embed=embed)
+
+    except Exception as e:
+        await ctx.send(f"❌ Error fetching seller locations: {str(e)}")
+
 
 @bot.command()
 async def leaderboard(ctx):
