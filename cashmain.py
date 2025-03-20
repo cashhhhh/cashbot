@@ -226,18 +226,22 @@ ALERT_USER_IDS = [480028928329777163,
 
 # Add to imports
 import re
+import matplotlib.pyplot as plt
+from PIL import Image
 
-# Update LOCATION_COORDS
+# Add to global variables
+SELLER_ROLE_ID = 1103522760073945168  # Your seller role ID
+GTA_MAP_PATH = "gta_map.png"  # Path to your GTA map image
 LOCATION_COORDS = {
     # Format: "POSTAL": (x, y)
-    "LSIA123": (120, 450),
-    "VW456": (300, 200),
-    "SS789": (600, 350),
-    "PB012": (800, 100),
-    "DT345": (250, 300)
+    "LSIA123": (120, 450),  # Los Santos International Airport
+    "VW456": (300, 200),    # Vinewood
+    "SS789": (600, 350),    # Sandy Shores
+    "PB012": (800, 100),    # Paleto Bay
+    "DT345": (250, 300)     # Downtown
 }
 
-# Update seller_locations command
+# Add this command
 @bot.command(name='sellerlocation')
 async def seller_locations(ctx):
     """Display seller locations on GTA map using postal codes"""
@@ -292,6 +296,23 @@ async def seller_locations(ctx):
         
     except Exception as e:
         await ctx.send(f"❌ Error generating map: {str(e)}")
+
+# Add this helper function
+def generate_gta_map():
+    """Generate a sample GTA map if needed"""
+    from PIL import ImageDraw
+    img = Image.new('RGB', (1000, 1000), color='black')
+    draw = ImageDraw.Draw(img)
+    
+    # Draw landmarks
+    draw.ellipse((100, 400, 150, 450), fill='yellow')  # LSIA
+    draw.rectangle((250, 150, 350, 250), fill='blue')  # Vinewood
+    draw.polygon([(550, 300), (650, 300), (600, 400)], fill='green')  # Sandy Shores
+    draw.rectangle((750, 50, 850, 150), fill='red')  # Paleto Bay
+    draw.ellipse((200, 250, 300, 350), fill='purple')  # Downtown
+    
+    img.save("gta_map.png")
+
 
 @bot.command(name='checkticket')
 async def checkticket(ctx, amount: float, unread_only: bool = True):
