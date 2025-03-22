@@ -2000,7 +2000,6 @@ def save_blacklist():
         json.dump(blacklist, f, indent=4)
 
 # Command: !blacklist add <user_id>
-@926992160899862619
 
 @bot.command(name='emaillog')
 async def checkticket_log(ctx, amount: float, unread_only: bool = True):
