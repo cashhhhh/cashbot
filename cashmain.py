@@ -331,6 +331,140 @@ async def checkticket(ctx, amount: float, unread_only: bool = True):
                         inline=True)
         await ctx.send(embed=embed)
 
+COMMISSION_ROLES = {
+    "Trial Salesman": 0.00,
+    "Novice Salesman": 0.10,
+    "Junior Salesman": 0.20,
+    "Senior Salesman": 0.25,
+    "Pro Salesman": 0.30,
+    "Expert Salesman": 0.33
+}
+
+# Add to config.json
+COMMISSION_CONFIG = {
+    "logs_channel": 1204975297594789898,  # Your commission logs channel
+    "min_days_between_claims": 7,
+    "manager_approval_threshold": 50.00,
+    "owner_ids": [480028928329777163, 230803708034678786]  # Your owner IDs
+}
+
+# Updated commission system
+@bot.event
+async def on_guild_channel_create(channel):
+    """Auto-detect commission tickets by name"""
+    if channel.name.startswith("commission-"):
+        await channel.send(f"<@{COMMISSION_CONFIG['owner_ids'][0]}>")  # Ping primary owner
+        await handle_commission_ticket(channel)
+
+async def handle_commission_ticket(channel):
+    """Full commission workflow without category dependency"""
+    try:
+        # Step 1: Identity verification
+        seller = await verify_seller_identity(channel)
+        if not seller:
+            return await close_ticket(channel, "Identity verification failed")
+
+        # Step 2: Sales validation
+        sales_data = load_sales_data()
+        seller_sales = sales_data.get(str(seller.id), [])
+        if len(seller_sales) < 3:
+            return await close_ticket(channel, "Minimum 3 sales required")
+
+        # Step 3: Calculate commission
+        current_rank = get_current_rank(len(seller_sales))
+        commission_rate = COMMISSION_ROLES[current_rank]
+        total_commission = sum(s['amount'] for s in seller_sales) * commission_rate
+
+        # Step 4: Claim cooldown check
+        last_claim = await get_last_claim(seller)
+        if (datetime.now() - last_claim).days < COMMISSION_CONFIG['min_days_between_claims']:
+            next_claim = last_claim + timedelta(days=COMMISSION_CONFIG['min_days_between_claims'])
+            return await close_ticket(channel, f"Next claim available: {next_claim:%Y-%m-%d}")
+
+        # Step 5: Fraud detection
+        if detect_fraud(seller, seller_sales):
+            await channel.edit(name=f"FRAUD-{channel.name}")
+            return await channel.send("🚨 Potential fraud detected - escalation required")
+
+        # Step 6: Payout approval
+        payout_code = get_giftcard_code(total_commission)
+        if not payout_code:
+            return await close_ticket(channel, "No available codes for this amount")
+
+        approval_view = CommissionApprovalView(total_commission)
+        msg = f"**Pending ${total_commission:.2f} payout**\nCode: ||{payout_code}||\n"
+        
+        if total_commission >= COMMISSION_CONFIG['manager_approval_threshold']:
+            msg += "Owner approval required!"
+        else:
+            msg += "Auto-approving in 60 seconds..."
+            approval_view.timeout = 60
+
+        await channel.send(msg, view=approval_view)
+        await approval_view.wait()
+
+        if approval_view.approved:
+            await finalize_payout(channel, seller, total_commission, payout_code)
+        else:
+            await close_ticket(channel, "Payout cancelled by owner")
+
+    except Exception as e:
+        logging.error(f"Commission error: {str(e)}")
+        await close_ticket(channel, "System error - contact owner")
+
+async def finalize_payout(channel, seller, amount, code):
+    """Log payout to your specific channel"""
+    log_channel = bot.get_channel(1204975297594789898)
+    embed = discord.Embed(
+        title="Commission Paid",
+        description=(
+            f"**Seller:** {seller.mention}\n"
+            f"**Amount:** ${amount:.2f}\n"
+            f"**Code:** ||{code}||\n"
+            f"**Ticket:** {channel.mention}"
+        ),
+        color=0x00ff00
+    )
+    await log_channel.send(embed=embed)
+    await channel.delete()
+
+class CommissionApprovalView(discord.ui.View):
+    """Owner-locked approval system"""
+    def __init__(self, amount):
+        super().__init__(timeout=None)
+        self.approved = False
+        self.amount = amount
+
+    @discord.ui.button(label="Approve", style=discord.ButtonStyle.green)
+    async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id not in COMMISSION_CONFIG['owner_ids']:
+            return await interaction.response.send_message(
+                "❌ Owner-only command", 
+                ephemeral=True
+            )
+        self.approved = True
+        await interaction.response.send_message("✅ Approved")
+        self.stop()
+
+    @discord.ui.button(label="Deny", style=discord.ButtonStyle.red)
+    async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id not in COMMISSION_CONFIG['owner_ids']:
+            return await interaction.response.send_message(
+                "❌ Owner-only command", 
+                ephemeral=True
+            )
+        await interaction.response.send_message("❌ Denied")
+        self.stop()
+
+async def get_last_claim(seller):
+    """Check your specific log channel for last claim"""
+    log_channel = bot.get_channel(1204975297594789898)
+    async for msg in log_channel.history(limit=200):
+        if str(seller.id) in msg.content:
+            return msg.created_at.replace(tzinfo=None)
+    return datetime(1970, 1, 1)  # Default to epoch time if no claims
+
+
 
 @bot.command()
 async def profit(ctx):
