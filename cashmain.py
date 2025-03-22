@@ -331,44 +331,36 @@ async def checkticket(ctx, amount: float, unread_only: bool = True):
                         inline=True)
         await ctx.send(embed=embed)
 
-COMMISSION_ROLES = {
-    "Trial Salesman": 0.00,
-    "Novice Salesman": 0.10,
-    "Junior Salesman": 0.20,
-    "Senior Salesman": 0.25,
-    "Pro Salesman": 0.30,
-    "Expert Salesman": 0.33
-}
-
-# Add to config.json
-COMMISSION_CONFIG = {
-    "logs_channel": 1204975297594789898,  # Your commission logs channel
-    "min_days_between_claims": 7,
-    "manager_approval_threshold": 50.00,
-    "owner_ids": [480028928329777163, 230803708034678786]  # Your owner IDs
-}
-
-# # Add to existing imports
+import discord
+from discord.ext import commands
 from datetime import datetime, timedelta
+import asyncio
 
-# Add to config
+# CONFIG
 COMMISSION_CONFIG = {
-    "logs_channel_id": 1204975297594789898,
-    "min_days_between_claims": 7,
-    "manager_approval_threshold": 50.00,
-    "owner_ids": [480028928329777163, 230803708034678786]
-}
-
-COMMISSION_RATES = {
-    "Trial Salesman": 0.00,
-    "Novice Salesman": 0.10,
-    "Junior Salesman": 0.20,
-    "Senior Salesman": 0.25,
-    "Pro Salesman": 0.30,
-    "Expert Salesman": 0.33
+    "logs_channel_id": 1204975297594789898,  # Your commission logs channel
+    "min_days_between_claims": 7,  # Days between claims
+    "manager_approval_threshold": 50.00,  # Amount requiring owner approval
+    "owner_ids": [480028928329777163, 230803708034678786],  # Your owner IDs
+    "sales_roles": {  # Role-based commission structure
+        "Trial Salesman": {"commission": 0.00},
+        "Novice Salesman": {"commission": 0.10},
+        "Junior Salesman": {"commission": 0.20},
+        "Senior Salesman": {"commission": 0.25},
+        "Pro Salesman": {"commission": 0.30},
+        "Expert Salesman": {"commission": 0.33}
+    }
 }
 
 # Add to existing bot
+intents = discord.Intents.default()
+intents.guilds = True
+intents.messages = True
+intents.message_content = True
+
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+# COMMISSION APPROVAL VIEW
 class CommissionApprovalView(discord.ui.View):
     def __init__(self, amount):
         super().__init__(timeout=None)
@@ -392,6 +384,7 @@ class CommissionApprovalView(discord.ui.View):
         await interaction.response.send_message("❌ Denied")
         self.stop()
 
+# COMMISSION HANDLER
 async def handle_commission_ticket(channel):
     try:
         # Step 1: Verify identity
@@ -407,8 +400,7 @@ async def handle_commission_ticket(channel):
             msg = await bot.wait_for('message', check=check_mention, timeout=300)
             seller = msg.mentions[0]
         except asyncio.TimeoutError:
-            await channel.send("⏰ Verification timed out. Closing ticket.")
-            await channel.delete()
+            await close_ticket(channel, "Verification timed out")
             return
 
         # Step 2: Get claimed amount
@@ -427,60 +419,45 @@ async def handle_commission_ticket(channel):
             msg = await bot.wait_for('message', check=check_amount, timeout=300)
             claimed_amount = float(msg.content)
         except asyncio.TimeoutError:
-            await channel.send("⏰ Amount entry timed out. Closing ticket.")
-            await channel.delete()
+            await close_ticket(channel, "Amount entry timed out")
             return
 
-        # Step 3: Validate sales
-        sales_data = load_sales_data()
-        seller_sales = sales_data.get(str(seller.id), [])
-        if len(seller_sales) < 3:
-            await channel.send("❌ Minimum 3 sales required for commission")
-            await channel.delete()
+        # Step 3: Verify seller role
+        seller_role = None
+        for role in seller.roles:
+            if role.name in COMMISSION_CONFIG['sales_roles']:
+                seller_role = role.name
+                break
+
+        if not seller_role:
+            await close_ticket(channel, "No valid sales role found")
             return
 
-        # Step 4: Calculate actual commission
-        total_sales = len(seller_sales)
-        rank = get_current_rank(total_sales)
-        commission_rate = COMMISSION_RATES[rank]
-        actual_commission = sum(sale['amount'] for sale in seller_sales) * commission_rate
+        # Step 4: Calculate commission
+        commission_rate = COMMISSION_CONFIG['sales_roles'][seller_role]['commission']
+        commission_amount = claimed_amount * commission_rate
 
-        # Step 5: Compare amounts
-        if abs(claimed_amount - actual_commission) > 5.00:  # Allow $5 variance
-            await channel.send(
-                f"⚠️ Discrepancy detected!\n"
-                f"Claimed: ${claimed_amount:.2f}\n"
-                f"Calculated: ${actual_commission:.2f}\n"
-                "Requiring manual review..."
-            )
-            await channel.edit(name=f"review-{channel.name}")
-            return
-
-        # Step 6: Check cooldown
-        log_channel = bot.get_channel(COMMISSION_CONFIG['logs_channel_id'])
-        last_claim = datetime.min
-        async for message in log_channel.history(limit=200):
-            if str(seller.id) in message.content:
-                last_claim = max(last_claim, message.created_at)
-        
-        if (datetime.now() - last_claim.replace(tzinfo=None)).days < COMMISSION_CONFIG['min_days_between_claims']:
+        # Step 5: Check cooldown
+        last_claim = await get_last_claim(seller)
+        if (datetime.now() - last_claim).days < COMMISSION_CONFIG['min_days_between_claims']:
             next_claim = last_claim + timedelta(days=COMMISSION_CONFIG['min_days_between_claims'])
-            await channel.send(f"⏳ Next available claim: {next_claim.strftime('%Y-%m-%d')}")
-            await channel.delete()
+            await close_ticket(channel, f"Next claim available: {next_claim.strftime('%Y-%m-%d')}")
             return
 
-        # Step 7: Payout process
+        # Step 6: Payout process
         payout_code = f"GC-{seller.id}-{int(datetime.now().timestamp())}"  # Replace with actual code
-        approval_view = CommissionApprovalView(actual_commission)
+        approval_view = CommissionApprovalView(commission_amount)
         
         msg_content = [
             f"**Commission Request**",
-            f"Seller: {seller.mention} ({rank})",
-            f"Amount: ${actual_commission:.2f}",
+            f"Seller: {seller.mention} ({seller_role})",
+            f"Claimed Amount: ${claimed_amount:.2f}",
+            f"Commission Rate: {commission_rate * 100}%",
+            f"Payout Amount: ${commission_amount:.2f}",
             f"Code: ||{payout_code}||"
         ]
 
-        if actual_commission >= COMMISSION_CONFIG['manager_approval_threshold']:
+        if commission_amount >= COMMISSION_CONFIG['manager_approval_threshold']:
             msg_content.append("\n**Owner approval required**")
         else:
             msg_content.append("\nAuto-approving in 60 seconds...")
@@ -490,21 +467,8 @@ async def handle_commission_ticket(channel):
         await approval_view.wait()
 
         if approval_view.approved:
-            # Log payout
-            log_embed = discord.Embed(
-                title="Commission Paid",
-                description=(
-                    f"**Seller:** {seller.mention}\n"
-                    f"**Amount:** ${actual_commission:.2f}\n"
-                    f"**Code:** ||{payout_code}||\n"
-                    f"**Ticket:** {channel.mention}"
-                ),
-                color=discord.Color.green()
-            )
-            await log_channel.send(embed=log_embed)
-            await channel.send("✅ Payout completed! Closing in 10 seconds...")
-            await asyncio.sleep(10)
-            await channel.delete()
+            await log_payout(seller.id, commission_amount, payout_code)
+            await close_ticket(channel, "Payout completed")
         else:
             await channel.send("❌ Payout cancelled")
             await channel.edit(name=f"denied-{channel.name}")
@@ -513,19 +477,48 @@ async def handle_commission_ticket(channel):
         await channel.send(f"⚠️ Error processing commission: {str(e)}")
         raise
 
+# HELPER FUNCTIONS
+async def get_last_claim(seller):
+    """Get last claim date from logs"""
+    log_channel = bot.get_channel(COMMISSION_CONFIG['logs_channel_id'])
+    last_claim = datetime.min
+    async for message in log_channel.history(limit=200):
+        if str(seller.id) in message.content:
+            last_claim = max(last_claim, message.created_at)
+    return last_claim.replace(tzinfo=None)
+
+async def log_payout(seller_id, amount, code):
+    """Log payout to commission logs channel"""
+    log_channel = bot.get_channel(COMMISSION_CONFIG['logs_channel_id'])
+    embed = discord.Embed(
+        title="Commission Paid",
+        description=(
+            f"**Seller:** <@{seller_id}>\n"
+            f"**Amount:** ${amount:.2f}\n"
+            f"**Code:** ||{code}||\n"
+            f"**Timestamp:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        ),
+        color=discord.Color.green()
+    )
+    await log_channel.send(embed=embed)
+
+async def close_ticket(channel, reason):
+    """Close ticket with reason"""
+    await channel.send(f"❌ Closing ticket: {reason}")
+    await asyncio.sleep(10)
+    await channel.delete()
+
+# TICKET HANDLER
 @bot.event
 async def on_guild_channel_create(channel):
     if channel.name.startswith("commission-"):
-        # Start process
         await channel.send(
             f"👋 Welcome {channel.mention}!\n"
             "Please wait while we initialize your commission claim..."
         )
         await handle_commission_ticket(channel)
-        # Notify owner
         owner_mention = " ".join(f"<@{oid}>" for oid in COMMISSION_CONFIG['owner_ids'])
         await channel.send(f"{owner_mention} New commission claim started")
-
 
 @bot.command()
 async def profit(ctx):
