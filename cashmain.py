@@ -331,10 +331,6 @@ async def checkticket(ctx, amount: float, unread_only: bool = True):
                         inline=True)
         await ctx.send(embed=embed)
 
-import discord
-from discord.ext import commands
-from datetime import datetime, timedelta
-import asyncio
 
 # CONFIG
 COMMISSION_CONFIG = {
