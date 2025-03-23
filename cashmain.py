@@ -348,13 +348,7 @@ COMMISSION_CONFIG = {
     }
 }
 
-# Add to existing bot
-intents = discord.Intents.default()
-intents.guilds = True
-intents.messages = True
-intents.message_content = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
 
 # COMMISSION APPROVAL VIEW
 class CommissionApprovalView(discord.ui.View):
