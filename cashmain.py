@@ -264,7 +264,7 @@ async def checkticket(ctx, amount: float, unread_only: bool = True):
 
     allowed_role_ids = [110352276007394516, 1325902622120738866]
     is_owner = str(ctx.author.id) in OWNER_IDS
-    has_role = any(role.id == allowed_role_id for role in ctx.author.roles)
+    has_role = any(role.id == allowed_role_ids for role in ctx.author.roles)
 
     if not (is_owner or has_role):
         await ctx.send("You do not have permission to use this command.")
