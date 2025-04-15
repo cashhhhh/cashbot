@@ -694,9 +694,14 @@ import asyncio
 # Track user training sessions
 user_training_sessions = {}
 
+import re
+import asyncio
+
+user_training_sessions = {}
+
 @bot.command(name="train")
 async def start_training(ctx):
-    """Walks a Trial Salesman through onboarding with tests and skip support."""
+    """Walks a Trial Salesman through onboarding with test validation and auto-role."""
     user_id = ctx.author.id
 
     def check(m):
@@ -725,43 +730,58 @@ async def start_training(ctx):
             user_training_sessions.pop(user_id, None)
 
     await ctx.send(f"📚 **Welcome to Training, {ctx.author.mention}!**\n"
-                   "Let's go over the basic commands and test your knowledge.\n"
-                   "_You can type `!skip` at any time to move forward._")
+                   "Let’s go over the basics. You can type `!skip` at any time to move ahead.")
 
-    # Step 1 - checkticket explanation
+    # Step 1: Explain and test !checkticket
     await asyncio.sleep(1)
     await ctx.send("🔹 **Step 1: `!checkticket` Command**\n"
-                   "This is how you report a gift card. Example: `!checkticket $200`")
+                   "This is how you report a gift card. Example: `!checkticket 200`")
 
     result = await wait_for_input(
-        prompt="🧪 Type the correct `!checkticket` command now (e.g. `!checkticket $200`):",
-        validator=lambda x: x.startswith("!checkticket") and re.search(r"\$\d+", x),
-        fail_msg="❌ Try again. Your message should start with `!checkticket` and include a dollar amount.",
+        prompt="🧪 Type how you would run the `!checkticket` command for a $200 card:",
+        validator=lambda x: x.startswith("!checkticket") and re.search(r"\d+", x),
+        fail_msg="❌ Try again — it should look like `!checkticket 200`",
         step_key="checkticket"
     )
     if result == "timeout":
         return
 
-    # Step 2 - trigger word explanation
+    # Step 2: Trigger word test
     await asyncio.sleep(1)
     await ctx.send("🔹 **Step 2: Trigger Words**\n"
-                   "Trigger words like `customer:` help us track important parts of your sales.\n"
-                   "_Example: `customer: John D. - $200`_")
+                   "Use keywords like `customer:` to log deals.\n"
+                   "_Example: `customer: John - 200`_")
 
     result = await wait_for_input(
-        prompt="🧪 Send a message starting with `customer:` and include a name and dollar amount.",
-        validator=lambda x: x.startswith("customer:") and "$" in x,
-        fail_msg="❌ That doesn’t look right. Try something like `customer: John - $200`",
+        prompt="🧪 Send a message starting with `customer:` and include a name and value.",
+        validator=lambda x: x.startswith("customer:") and re.search(r"\d+", x),
+        fail_msg="❌ Try again. Make sure your message starts with `customer:` and has a number.",
         step_key="triggerword"
     )
     if result == "timeout":
         return
 
-    # Final wrap up
+    # Auto-role grant
+    trial_role = discord.utils.get(ctx.guild.roles, name="Trial Salesman")
+    if trial_role:
+        await ctx.author.add_roles(trial_role)
+        await ctx.send(f"🧢 You’ve been given the **Trial Salesman** role.")
+    else:
+        await ctx.send("⚠️ Could not find the `Trial Salesman` role. Please tell a trainer.")
+
+    # Done!
     await asyncio.sleep(1)
     await ctx.send(f"🎉 **Training complete!**\n"
-                   "You’re now ready to move to the next step: VC interview, car selection, and role setup.\n"
-                   "Let your trainer know you're finished. Welcome aboard!")
+                   "You’re ready to move to VC, pick your cars, and get set up.\n"
+                   "Let your trainer know you finished.")
+
+@bot.command(name="skip")
+async def skip_training(ctx):
+    """Skip current training step if in session."""
+    if ctx.author.id not in user_training_sessions:
+        await ctx.send("❌ You're not in an active training session.")
+        return
+    await ctx.send("⏭️ Step will be skipped on your next message.")
 
 @bot.command(name="skip")
 async def skip_training(ctx):
