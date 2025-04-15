@@ -516,6 +516,30 @@ async def on_guild_channel_create(channel):
         owner_mention = " ".join(f"<@{oid}>" for oid in COMMISSION_CONFIG['owner_ids'])
         await channel.send(f"{owner_mention} New commission claim started")
 
+
+
+@bot.event
+async def on_message_delete(message):
+    if message.author.bot:
+        return
+
+    if message.mentions:
+        content = message.content or "*[no text]*"
+        channel = message.channel
+        embed = discord.Embed(
+            title="👻 Ghost Ping Detected",
+            description=f"{message.author.mention} tried to ping and dip.",
+            color=discord.Color.orange(),
+            timestamp=datetime.utcnow()
+        )
+        embed.add_field(name="Message Content", value=content, inline=False)
+        embed.add_field(name="Channel", value=channel.mention, inline=True)
+
+        alert_channel = bot.get_channel(1223077287457587221)
+        await alert_channel.send(embed=embed)
+
+
+
 @bot.command()
 async def profit(ctx):
     """Display profit for the bot owner, calculated from today's emails."""
@@ -646,6 +670,50 @@ Commission (18%): ${commission:.2f}
 Net Profit: ${net_profit:.2f}
 ```"""
     await ctx.send(profit_msg)
+
+
+
+@bot.command(name="profile")
+async def rep_profile(ctx, user: discord.Member = None):
+    user = user or ctx.author
+    channel = bot.get_channel(1103526122211262565)  # sales log channel
+    if not channel:
+        return await ctx.send("❌ Sales log channel not found.")
+
+    total_sales = 0
+    sales_count = 0
+    last_payout = None
+
+    async for message in channel.history(limit=1000):
+        if message.author == user and "customer:" in message.content.lower():
+            match = re.search(r'\$(\d+(?:\.\d{2})?)', message.content)
+            if match:
+                amount = float(match.group(1))
+                total_sales += amount
+                sales_count += 1
+                if not last_payout or message.created_at > last_payout:
+                    last_payout = message.created_at
+
+    avg_sale = total_sales / sales_count if sales_count else 0
+    credit_balance = credits.get(str(user.id), 0.0)
+
+    embed = discord.Embed(
+        title=f"💼 Rep Profile: {user.display_name}",
+        color=discord.Color.blue(),
+        timestamp=datetime.now()
+    )
+    embed.set_thumbnail(url=user.display_avatar.url)
+    embed.add_field(name="Total Sales", value=f"${total_sales:.2f}", inline=True)
+    embed.add_field(name="Sales Count", value=str(sales_count), inline=True)
+    embed.add_field(name="Average Sale", value=f"${avg_sale:.2f}", inline=True)
+    embed.add_field(name="Credit Balance", value=f"${credit_balance:.2f}", inline=True)
+    if last_payout:
+        embed.add_field(name="Last Sale", value=last_payout.strftime('%Y-%m-%d %I:%M %p'), inline=False)
+    else:
+        embed.add_field(name="Last Sale", value="No sales found.", inline=False)
+
+    await ctx.send(embed=embed)
+
 
 @bot.command(name='sellerlocations')
 async def seller_locations(ctx):
