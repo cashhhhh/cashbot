@@ -815,6 +815,28 @@ import asyncio
 
 user_training_sessions = {}
 
+
+@bot.command(name="leaveserver")
+@commands.is_owner()
+async def leave_server_by_id(ctx, server_id: int):
+    """Owner-only command: makes the bot leave a specific server by ID."""
+    guild = bot.get_guild(server_id)
+    if not guild:
+        return await ctx.send("❌ Server not found or bot is not in that server.")
+
+    await ctx.send(f"⚠️ About to leave **{guild.name}** (`{server_id}`). Type `confirm {server_id}` within 15 seconds to proceed.")
+
+    def check(m):
+        return m.author == ctx.author and m.channel == ctx.channel and m.content.lower() == f"confirm {server_id}"
+
+    try:
+        await bot.wait_for("message", timeout=15.0, check=check)
+        await ctx.send(f"👋 Leaving server: **{guild.name}**")
+        await guild.leave()
+    except asyncio.TimeoutError:
+        await ctx.send("⏰ Cancelled. Bot will not leave.")
+
+
 @bot.command(name="train")
 async def start_training(ctx):
     """Walks a Trial Salesman through onboarding with test validation and auto-role."""
