@@ -2646,6 +2646,47 @@ async def version_check(ctx):
     
     await ctx.send(embed=embed)
 
+@bot.command(name="blacklistban")
+@commands.is_owner()
+async def blacklist_ban(ctx, user_id: int):
+    """Ban a user from all servers the bot is in."""
+    try:
+        user = await bot.fetch_user(user_id)
+        if not user:
+            await ctx.send("❌ Could not fetch that user.")
+            return
+
+        success = 0
+        failed = []
+
+        for guild in bot.guilds:
+            try:
+                await guild.ban(user, reason=f"Blacklisted by {ctx.author}", delete_message_days=0)
+                success += 1
+            except discord.Forbidden:
+                failed.append(guild.name)
+            except Exception as e:
+                failed.append(f"{guild.name} ({str(e)})")
+
+        embed = discord.Embed(
+            title="🚫 Global Ban Executed",
+            color=discord.Color.red(),
+            description=f"User {user} (`{user.id}`) has been banned from {success} server(s)."
+        )
+
+        if failed:
+            embed.add_field(
+                name="❌ Failed Servers",
+                value="\n".join(failed),
+                inline=False
+            )
+
+        await ctx.send(embed=embed)
+
+    except Exception as e:
+        await ctx.send(f"❌ Error: {str(e)}")
+
+
 @bot.command(name='audit')
 @commands.is_owner()
 async def audit_log(ctx, days: int = 7):
