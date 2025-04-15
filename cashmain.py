@@ -699,6 +699,11 @@ import asyncio
 
 user_training_sessions = {}
 
+import re
+import asyncio
+
+user_training_sessions = {}
+
 @bot.command(name="train")
 async def start_training(ctx):
     """Walks a Trial Salesman through onboarding with test validation and auto-role."""
@@ -715,7 +720,7 @@ async def start_training(ctx):
                 msg = await bot.wait_for("message", timeout=60.0, check=check)
                 content = msg.content.strip().lower()
 
-                if content == "!skip":
+                if content == "!trainskip":
                     await ctx.send("⏭️ Skipped this step. Moving on.")
                     return "skipped"
 
@@ -730,7 +735,7 @@ async def start_training(ctx):
             user_training_sessions.pop(user_id, None)
 
     await ctx.send(f"📚 **Welcome to Training, {ctx.author.mention}!**\n"
-                   "Let’s go over the basics. You can type `!skip` at any time to move ahead.")
+                   "Let’s go over the basics. You can type `!trainskip` at any time to move ahead.")
 
     # Step 1: Explain and test !checkticket
     await asyncio.sleep(1)
@@ -738,7 +743,7 @@ async def start_training(ctx):
                    "This is how you report a gift card. Example: `!checkticket 200`")
 
     result = await wait_for_input(
-        prompt="🧪 Type how you would run the `!checkticket` command for a $200 card:",
+        prompt="🧪 Type how you would run the `!checkticket` command for a 200 card:",
         validator=lambda x: x.startswith("!checkticket") and re.search(r"\d+", x),
         fail_msg="❌ Try again — it should look like `!checkticket 200`",
         step_key="checkticket"
@@ -772,10 +777,10 @@ async def start_training(ctx):
     # Done!
     await asyncio.sleep(1)
     await ctx.send(f"🎉 **Training complete!**\n"
-                   "You’re ready to move to VC, pick your cars, and get set up.\n"
-                   "Let your trainer know you finished.")
+                   "You’re now ready to move to VC, pick your cars, and get set up.\n"
+                   "Let your trainer know you're finished.")
 
-@bot.command(name="skip")
+@bot.command(name="trainskip")
 async def skip_training(ctx):
     """Skip current training step if in session."""
     if ctx.author.id not in user_training_sessions:
@@ -783,14 +788,7 @@ async def skip_training(ctx):
         return
     await ctx.send("⏭️ Step will be skipped on your next message.")
 
-@bot.command(name="skip")
-async def skip_training(ctx):
-    """Skip current training step if in session."""
-    if ctx.author.id not in user_training_sessions:
-        await ctx.send("❌ You are not in an active training session.")
-        return
-    # Do nothing — skip is handled inside !train logic itself.
-    await ctx.send("⏭️ Training will skip your current step on your next message.")
+
 
 
 
