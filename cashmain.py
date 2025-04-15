@@ -688,62 +688,89 @@ Net Profit: ${net_profit:.2f}
     await ctx.send(profit_msg)
 
 
+import re
+import asyncio
+
+# Track user training sessions
+user_training_sessions = {}
+
 @bot.command(name="train")
 async def start_training(ctx):
-    """Walks a new Trial Salesman through automated training."""
+    """Walks a Trial Salesman through onboarding with tests and skip support."""
+    user_id = ctx.author.id
+
     def check(m):
         return m.author == ctx.author and m.channel == ctx.channel
 
+    async def wait_for_input(prompt, validator, fail_msg, step_key):
+        user_training_sessions[user_id] = step_key
+        await ctx.send(prompt)
+        try:
+            while True:
+                msg = await bot.wait_for("message", timeout=60.0, check=check)
+                content = msg.content.strip().lower()
+
+                if content == "!skip":
+                    await ctx.send("⏭️ Skipped this step. Moving on.")
+                    return "skipped"
+
+                if validator(content):
+                    return "passed"
+                else:
+                    await ctx.send(fail_msg)
+        except asyncio.TimeoutError:
+            await ctx.send("⏰ Time’s up! Training canceled.")
+            return "timeout"
+        finally:
+            user_training_sessions.pop(user_id, None)
+
     await ctx.send(f"📚 **Welcome to Training, {ctx.author.mention}!**\n"
-                   "Let’s walk through what you need to know to start as a Trial Salesman.")
+                   "Let's go over the basic commands and test your knowledge.\n"
+                   "_You can type `!skip` at any time to move forward._")
 
-    # Step 1: Explain !checkticket
+    # Step 1 - checkticket explanation
     await asyncio.sleep(1)
-    await ctx.send("🔹 **Step 1: Learn the `!checkticket` command**\n"
-                   "This is how you report a gift card.\n"
-                   "**Correct format:** `!checkticket $200`")
+    await ctx.send("🔹 **Step 1: `!checkticket` Command**\n"
+                   "This is how you report a gift card. Example: `!checkticket $200`")
 
-    # Step 2: Test them on it
-    await asyncio.sleep(1)
-    await ctx.send("🧪 Now you try. Type the correct `!checkticket` command for a $200 card:")
+    result = await wait_for_input(
+        prompt="🧪 Type the correct `!checkticket` command now (e.g. `!checkticket $200`):",
+        validator=lambda x: x.startswith("!checkticket") and re.search(r"\$\d+", x),
+        fail_msg="❌ Try again. Your message should start with `!checkticket` and include a dollar amount.",
+        step_key="checkticket"
+    )
+    if result == "timeout":
+        return
 
-    try:
-        msg = await bot.wait_for("message", timeout=60.0, check=check)
-        content = msg.content.strip().lower()
-        if content == "!checkticket $200" or content == "!checkticket $200.00":
-            await ctx.send("✅ Correct! That’s exactly how it should look.")
-        else:
-            await ctx.send("❌ That’s not the proper format. Try again later using `!train`.")
-            return
-    except asyncio.TimeoutError:
-        return await ctx.send("⏰ Time's up! Training cancelled.")
-
-    # Step 3: Trigger words explanation
+    # Step 2 - trigger word explanation
     await asyncio.sleep(1)
     await ctx.send("🔹 **Step 2: Trigger Words**\n"
-                   "Trigger words are keywords like `customer:` that the bot watches for in your messages.\n"
-                   "Use them to log important info — let’s test it.")
+                   "Trigger words like `customer:` help us track important parts of your sales.\n"
+                   "_Example: `customer: John D. - $200`_")
 
+    result = await wait_for_input(
+        prompt="🧪 Send a message starting with `customer:` and include a name and dollar amount.",
+        validator=lambda x: x.startswith("customer:") and "$" in x,
+        fail_msg="❌ That doesn’t look right. Try something like `customer: John - $200`",
+        step_key="triggerword"
+    )
+    if result == "timeout":
+        return
+
+    # Final wrap up
     await asyncio.sleep(1)
-    await ctx.send("🧪 Now send a message starting with `customer:` and include a name + amount.\n"
-                   "_Example:_ `customer: John D. - $250`")
+    await ctx.send(f"🎉 **Training complete!**\n"
+                   "You’re now ready to move to the next step: VC interview, car selection, and role setup.\n"
+                   "Let your trainer know you're finished. Welcome aboard!")
 
-    try:
-        msg2 = await bot.wait_for("message", timeout=60.0, check=check)
-        if msg2.content.lower().startswith("customer:") and "$" in msg2.content:
-            await ctx.send("✅ Looks good! That’s how you use a trigger word properly.")
-        else:
-            await ctx.send("❌ That doesn’t look right. Make sure you use `customer:` and include a dollar amount.")
-            return
-    except asyncio.TimeoutError:
-        return await ctx.send("⏰ Time's up! Training cancelled.")
-
-    # Wrap up
-    await asyncio.sleep(1)
-    await ctx.send(f"🎉 **Training Complete!**\n"
-                   "You're ready to meet in VC for final steps.\n"
-                   "Be ready to go over the Salesman Area, select your 3 cars, and get your Trial roles.\n"
-                   "Let your trainer know you finished!")
+@bot.command(name="skip")
+async def skip_training(ctx):
+    """Skip current training step if in session."""
+    if ctx.author.id not in user_training_sessions:
+        await ctx.send("❌ You are not in an active training session.")
+        return
+    # Do nothing — skip is handled inside !train logic itself.
+    await ctx.send("⏭️ Training will skip your current step on your next message.")
 
 
 
