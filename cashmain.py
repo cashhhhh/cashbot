@@ -554,6 +554,66 @@ async def on_message_delete(message):
         alert_channel = bot.get_channel(1223077287457587221)
         await alert_channel.send(embed=embed)
 
+@bot.command(name="builddevserver")
+@commands.is_owner()
+async def build_dev_server(ctx):
+    """Creates a fully configured Dev Server with roles, channels, and permissions."""
+    await ctx.send("🛠️ Creating **Cash Bot Dev Server**...")
+
+    # Step 1: Create the server
+    guild = await bot.create_guild("Cash Bot Dev Server")
+    await asyncio.sleep(5)
+    guild = discord.utils.get(bot.guilds, name="Cash Bot Dev Server")
+
+    # Step 2: Create roles with permissions
+    perms = discord.Permissions
+    roles = {
+        "Bot Owner": perms(administrator=True),
+        "Bot Dev": perms(manage_guild=True, manage_messages=True, read_message_history=True),
+        "Trusted Admin": perms(manage_messages=True, view_audit_log=True),
+        "Muted": perms(send_messages=False, read_messages=True)
+    }
+
+    role_refs = {}
+    for role_name, role_perms in roles.items():
+        role = await guild.create_role(name=role_name, permissions=role_perms)
+        role_refs[role_name] = role
+
+    # Step 3: Create categories and channels
+    categories = {
+        "📢 BOT HQ": ["announcements", "changelog", "alerts"],
+        "🔧 LOGS": ["training-logs", "credit-transfers", "checkticket-logs", "errors"],
+        "🧠 DEVELOPMENT": ["feature-voting", "ideas", "dev-chat"],
+        "👤 STAFF": ["admin-chat", "mod-support"]
+    }
+
+    for cat_name, channels in categories.items():
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            role_refs["Bot Owner"]: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            role_refs["Bot Dev"]: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            role_refs["Trusted Admin"]: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+        }
+
+        # Logs category is private to staff only
+        if "LOGS" in cat_name:
+            overwrites[guild.default_role] = discord.PermissionOverwrite(read_messages=False)
+        category = await guild.create_category(cat_name, overwrites=overwrites)
+
+        for chan in channels:
+            await guild.create_text_channel(chan, category=category)
+
+    # Step 4: Create invite to #announcements
+    ann_channel = discord.utils.get(guild.text_channels, name="announcements")
+    invite = await ann_channel.create_invite(max_age=0, unique=True)
+
+    # Step 5: DM the owner
+    try:
+        await ctx.author.send(f"✅ Your **Dev Server** is ready: {invite.url}")
+    except:
+        await ctx.send("✅ Server created, but I couldn’t DM you the invite.")
+
+    await ctx.send("🎉 **Dev Server successfully created!**\nCheck your server list.")
 
 
 @bot.command()
