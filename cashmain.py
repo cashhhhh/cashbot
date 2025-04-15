@@ -244,6 +244,7 @@ ALERT_USER_IDS = [480028928329777163,
 
 
 
+
 @bot.command(name='checkticket')
 async def checkticket(ctx, amount: float, unread_only: bool = True):
     """Check for emails with a specific gift card amount. Owner and authorized role command."""
@@ -685,6 +686,64 @@ Commission (18%): ${commission:.2f}
 Net Profit: ${net_profit:.2f}
 ```"""
     await ctx.send(profit_msg)
+
+
+@bot.command(name="train")
+async def start_training(ctx):
+    """Walks a new Trial Salesman through automated training."""
+    def check(m):
+        return m.author == ctx.author and m.channel == ctx.channel
+
+    await ctx.send(f"📚 **Welcome to Training, {ctx.author.mention}!**\n"
+                   "Let’s walk through what you need to know to start as a Trial Salesman.")
+
+    # Step 1: Explain !checkticket
+    await asyncio.sleep(1)
+    await ctx.send("🔹 **Step 1: Learn the `!checkticket` command**\n"
+                   "This is how you report a gift card.\n"
+                   "**Correct format:** `!checkticket $200`")
+
+    # Step 2: Test them on it
+    await asyncio.sleep(1)
+    await ctx.send("🧪 Now you try. Type the correct `!checkticket` command for a $200 card:")
+
+    try:
+        msg = await bot.wait_for("message", timeout=60.0, check=check)
+        content = msg.content.strip().lower()
+        if content == "!checkticket $200" or content == "!checkticket $200.00":
+            await ctx.send("✅ Correct! That’s exactly how it should look.")
+        else:
+            await ctx.send("❌ That’s not the proper format. Try again later using `!train`.")
+            return
+    except asyncio.TimeoutError:
+        return await ctx.send("⏰ Time's up! Training cancelled.")
+
+    # Step 3: Trigger words explanation
+    await asyncio.sleep(1)
+    await ctx.send("🔹 **Step 2: Trigger Words**\n"
+                   "Trigger words are keywords like `customer:` that the bot watches for in your messages.\n"
+                   "Use them to log important info — let’s test it.")
+
+    await asyncio.sleep(1)
+    await ctx.send("🧪 Now send a message starting with `customer:` and include a name + amount.\n"
+                   "_Example:_ `customer: John D. - $250`")
+
+    try:
+        msg2 = await bot.wait_for("message", timeout=60.0, check=check)
+        if msg2.content.lower().startswith("customer:") and "$" in msg2.content:
+            await ctx.send("✅ Looks good! That’s how you use a trigger word properly.")
+        else:
+            await ctx.send("❌ That doesn’t look right. Make sure you use `customer:` and include a dollar amount.")
+            return
+    except asyncio.TimeoutError:
+        return await ctx.send("⏰ Time's up! Training cancelled.")
+
+    # Wrap up
+    await asyncio.sleep(1)
+    await ctx.send(f"🎉 **Training Complete!**\n"
+                   "You're ready to meet in VC for final steps.\n"
+                   "Be ready to go over the Salesman Area, select your 3 cars, and get your Trial roles.\n"
+                   "Let your trainer know you finished!")
 
 
 
