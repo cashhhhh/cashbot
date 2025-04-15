@@ -552,7 +552,6 @@ async def on_message_delete(message):
         embed.add_field(name="Channel", value=channel.mention, inline=True)
 
         alert_channel = bot.get_channel(1223077287457587221)
-        await alert_channel.send(embed=@bot.command(name="builddevserver")
 
                                  
                                   
