@@ -3345,6 +3345,36 @@ if __name__ == '__main__':
         flask_thread = threading.Thread(target=run_flask, daemon=True)
         flask_thread.start()
 
+       update_channel = bot.get_channel(1361849234550165618)
+    if update_channel:
+        await update_channel.send("🔄 **Bot restarted. Possible update pushed.**")
+
+    # Optional: Track code line count
+    try:
+        import os
+        current_file = os.path.abspath(__file__)
+        with open(current_file, 'r') as f:
+            current_lines = len(f.readlines())
+        previous_file = "last_code_linecount.txt"
+
+        previous_lines = 0
+        try:
+            with open(previous_file, "r") as p:
+                previous_lines = int(p.read())
+        except FileNotFoundError:
+            pass
+
+        if current_lines > previous_lines:
+            await update_channel.send(f"🆕 **Update Detected:** `{current_lines - previous_lines}` new lines added to the bot.")
+        elif current_lines < previous_lines:
+            await update_channel.send(f"⚠️ **Codebase Shrunk:** `{previous_lines - current_lines}` lines removed.")
+
+        with open(previous_file, "w") as w:
+            w.write(str(current_lines))
+    except Exception as e:
+        print(f"[Update Tracker] Failed: {e}")
+
+        
         # Run Discord bot
         bot.run(DISCORD_TOKEN)
     except KeyboardInterrupt:
