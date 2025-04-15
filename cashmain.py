@@ -558,14 +558,11 @@ async def on_message_delete(message):
 @bot.command(name="builddevserver")
 @commands.is_owner()
 async def build_dev_server(ctx):
-    """Creates a fully configured Dev Server and gives the command user full Bot Owner role."""
     await ctx.send("🛠️ Creating **Cash Bot Dev Server**...")
 
-    # Create the server
     new_guild = await bot.create_guild(name="Cash Bot Dev Server")
     await asyncio.sleep(5)
 
-    # Wait for the guild to be fully available
     for _ in range(10):
         guild = discord.utils.get(bot.guilds, id=new_guild.id)
         if guild:
@@ -589,11 +586,7 @@ async def build_dev_server(ctx):
         role = await guild.create_role(name=role_name, permissions=role_perms)
         role_refs[role_name] = role
 
-    # Assign Bot Owner role to user
-    member = await guild.fetch_member(ctx.author.id)
-    await member.add_roles(role_refs["Bot Owner"])
-
-    # Channel setup
+    # Build categories/channels
     categories = {
         "📢 BOT HQ": ["announcements", "changelog", "alerts"],
         "🔧 LOGS": ["training-logs", "credit-transfers", "checkticket-logs", "errors"],
@@ -609,22 +602,21 @@ async def build_dev_server(ctx):
             role_refs["Bot Dev"]: discord.PermissionOverwrite(read_messages=True, send_messages=True),
             role_refs["Trusted Admin"]: discord.PermissionOverwrite(read_messages=True, send_messages=True)
         }
-
         category = await guild.create_category(name=cat_name, overwrites=overwrites)
-        for chan_name in channel_list:
-            await guild.create_text_channel(name=chan_name, category=category)
+        for chan in channel_list:
+            await guild.create_text_channel(name=chan, category=category)
 
-    # Create invite to #announcements
+    # Invite + DM
     ann_channel = discord.utils.get(guild.text_channels, name="announcements")
     invite = await ann_channel.create_invite(max_age=0, unique=True)
 
     try:
-        await ctx.author.send(f"✅ Your **Dev Server** is ready: {invite.url}")
+        await ctx.author.send(f"✅ Your Dev Server is ready: {invite.url}\n"
+                              f"⚠️ After joining, run `!getownerrole` in the new server to receive your Bot Owner role.")
     except:
         await ctx.send("✅ Server created, but I couldn’t DM you the invite.")
 
-    await ctx.send("🎉 **Dev Server created!** Check your list — you’ve been given Bot Owner role.")
-@bot.command(name="apply")
+    await ctx.send("🎉 Server created! Join it and run `!getownerrole` inside to claim your owner role.")@bot.command(name="apply")
 async def apply(ctx):
     """Handles application flow in DMs and sends result to owner."""
     if ctx.channel.name != "applications":
