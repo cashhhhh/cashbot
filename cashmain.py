@@ -3339,25 +3339,20 @@ async def on_ready():
     start_time = time.time()
     monitor_sales_activity.start()  # Start the monitoring loop
     logging.info(f'{bot.user} has connected to Discord!')
-if __name__ == '__main__':
-    try:
-        # Run Flask in a daemon thread
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
 
-       update_channel = bot.get_channel(1361849234550165618)
+    update_channel = bot.get_channel(1361849234550165618)
     if update_channel:
         await update_channel.send("🔄 **Bot restarted. Possible update pushed.**")
 
     # Optional: Track code line count
     try:
-        import os
         current_file = os.path.abspath(__file__)
         with open(current_file, 'r') as f:
             current_lines = len(f.readlines())
-        previous_file = "last_code_linecount.txt"
 
+        previous_file = "last_code_linecount.txt"
         previous_lines = 0
+
         try:
             with open(previous_file, "r") as p:
                 previous_lines = int(p.read())
@@ -3371,8 +3366,25 @@ if __name__ == '__main__':
 
         with open(previous_file, "w") as w:
             w.write(str(current_lines))
+
     except Exception as e:
         print(f"[Update Tracker] Failed: {e}")
+
+# Launch Flask + bot
+if __name__ == '__main__':
+    try:
+        from flask_app import run_flask  # make sure your run_flask() is defined in flask_app or same file
+
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+
+        token = os.getenv("DISCORD_TOKEN")
+        if not token:
+            raise RuntimeError("DISCORD_TOKEN environment variable not set.")
+        bot.run(token)
+
+    except Exception as e:
+        print(f"❌ Error starting bot: {e}")
 
         
         # Run Discord bot
