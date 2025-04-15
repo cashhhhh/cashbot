@@ -2686,6 +2686,129 @@ async def blacklist_ban(ctx, user_id: int):
     except Exception as e:
         await ctx.send(f"❌ Error: {str(e)}")
 
+@bot.command(name='giftcardtotal')
+@commands.is_owner()
+async def giftcard_total(ctx):
+    """Check the total value of available gift cards (entire inbox, no storage)."""
+    try:
+        total_found = 0
+
+        # Connect to IMAP
+        imap = imaplib.IMAP4_SSL("imap.gmail.com")
+        EMAIL = os.getenv('GMAIL_EMAIL')
+        PASSWORD = os.getenv('GMAIL_PASSWORD')
+        imap.login(EMAIL, PASSWORD)
+        imap.select("inbox")
+
+        # Search every email in inbox
+        _, messages = imap.search(None, 'ALL')
+        email_ids = messages[0].split()
+
+        for email_id in email_ids:
+            _, msg = imap.fetch(email_id, '(RFC822)')
+            email_body = msg[0][1]
+            email_message = email.message_from_bytes(email_body)
+
+            # Get email content
+            body = ""
+            if email_message.is_multipart():
+                for part in email_message.walk():
+                    if part.get_content_type() == "text/plain":
+                        try:
+                            body = part.get_payload(decode=True).decode()
+                            break
+                        except:
+                            continue
+            else:
+                try:
+                    body = email_message.get_payload(decode=True).decode()
+                except:
+                    continue
+
+            # Look for dollar amounts
+            patterns = [
+                r'\$(\d+\.\d{2})\s*USD',
+                r'Value:\s*\$(\d+\.\d{2})',
+                r'Amount:\s*\$(\d+\.\d{2})',
+                r'Card Value:\s*\$(\d+\.\d{2})',
+                r'Gift Card.*?Value.*?\$(\d+\.\d{2})',
+            ]
+
+            for pattern in patterns:
+                found = re.findall(pattern, body, re.IGNORECASE | re.DOTALL)
+                for amount in found:
+                    try:
+                        total_found += float(amount)
+                    except:
+                        continue
+
+        imap.close()
+        imap.logout()
+
+        embed = discord.Embed(
+            title="💳 Total Gift Card Value",
+            description=f"**${total_found:.2f}** found across all emails.",
+            color=discord.Color.green(),
+            timestamp=datetime.now()
+        )
+        await ctx.send(embed=embed)
+
+    except Exception as e:
+        logging.error(f"GiftCardTotal Error: {str(e)}")
+        await ctx.send("❌ Error calculating gift card total.")
+
+@bot.event
+async def on_member_join(member):
+    try:
+        # Thresholds
+        MIN_ACCOUNT_AGE_DAYS = 7
+        FLAG_AGE_DAYS = 2
+
+        account_age_days = (datetime.utcnow() - member.created_at).days
+        alert_channel = bot.get_channel(1223077287457587221)  # ← your alert channel ID
+
+        if not alert_channel:
+            return
+
+        if account_age_days < MIN_ACCOUNT_AGE_DAYS:
+            embed = discord.Embed(
+                title="🚨 Possible Alt Account Detected",
+                description=f"{member.mention} just joined.\nAccount age: **{account_age_days} days**",
+                color=discord.Color.orange() if account_age_days >= FLAG_AGE_DAYS else discord.Color.red(),
+                timestamp=datetime.utcnow()
+            )
+            embed.add_field(name="Username", value=str(member), inline=True)
+            embed.add_field(name="User ID", value=str(member.id), inline=True)
+            embed.add_field(name="Account Created", value=member.created_at.strftime('%Y-%m-%d %H:%M:%S UTC'))
+
+            await alert_channel.send(embed=embed)
+
+            if account_age_days < FLAG_AGE_DAYS:
+                try:
+                    # DM the user
+                    dm_embed = discord.Embed(
+                        title="⚠️ Account Flagged",
+                        description=(
+                            "Hey there! Your Discord account is very new, and we’ve flagged it as a potential alt account.\n\n"
+                            "If you're legit, no worries — just contact a mod or staff member to verify and we’ll get you sorted!"
+                        ),
+                        color=discord.Color.orange()
+                    )
+                    await member.send(embed=dm_embed)
+
+                except discord.Forbidden:
+                    await alert_channel.send(f"❌ Couldn't DM {member.mention} before kicking (DMs disabled).")
+
+                # Kick the user
+                try:
+                    await member.kick(reason="Alt account detection: account too new")
+                    await alert_channel.send(f"❌ Kicked {member.mention} (under {FLAG_AGE_DAYS} days old)")
+                except Exception as e:
+                    await alert_channel.send(f"⚠️ Kick failed for {member.mention}: {e}")
+
+    except Exception as e:
+        logging.error(f"Alt detector error: {str(e)}")
+
 
 @bot.command(name='audit')
 @commands.is_owner()
