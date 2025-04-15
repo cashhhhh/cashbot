@@ -552,20 +552,18 @@ async def on_message_delete(message):
         embed.add_field(name="Channel", value=channel.mention, inline=True)
 
         alert_channel = bot.get_channel(1223077287457587221)
-        await alert_channel.send(embed=embed)
-
+        await alert_channel.send(embed=@bot.command(name="builddevserver")
 @bot.command(name="builddevserver")
 @commands.is_owner()
 async def build_dev_server(ctx):
-    """Creates a fully configured Dev Server with roles, channels, and permissions."""
+    """Creates a full Dev Server with roles, channels, permissions, and invite."""
     await ctx.send("🛠️ Creating **Cash Bot Dev Server**...")
 
-    # Step 1: Create the server
-    guild = await bot.create_guild("Cash Bot Dev Server")
+    guild = await bot.create_guild(name="Cash Bot Dev Server")
     await asyncio.sleep(5)
     guild = discord.utils.get(bot.guilds, name="Cash Bot Dev Server")
 
-    # Step 2: Create roles with permissions
+    # Step 1: Roles
     perms = discord.Permissions
     roles = {
         "Bot Owner": perms(administrator=True),
@@ -575,16 +573,16 @@ async def build_dev_server(ctx):
     }
 
     role_refs = {}
-    for role_name, role_perms in roles.items():
-        role = await guild.create_role(name=role_name, permissions=role_perms)
-        role_refs[role_name] = role
+    for name, permissions in roles.items():
+        role_refs[name] = await guild.create_role(name=name, permissions=permissions)
 
-    # Step 3: Create categories and channels
+    # Step 2: Categories and Channels
     categories = {
         "📢 BOT HQ": ["announcements", "changelog", "alerts"],
         "🔧 LOGS": ["training-logs", "credit-transfers", "checkticket-logs", "errors"],
         "🧠 DEVELOPMENT": ["feature-voting", "ideas", "dev-chat"],
-        "👤 STAFF": ["admin-chat", "mod-support"]
+        "👤 STAFF": ["admin-chat", "mod-support"],
+        "📝 ONBOARDING": ["applications"]
     }
 
     for cat_name, channels in categories.items():
@@ -595,25 +593,71 @@ async def build_dev_server(ctx):
             role_refs["Trusted Admin"]: discord.PermissionOverwrite(read_messages=True, send_messages=True),
         }
 
-        # Logs category is private to staff only
-        if "LOGS" in cat_name:
-            overwrites[guild.default_role] = discord.PermissionOverwrite(read_messages=False)
         category = await guild.create_category(cat_name, overwrites=overwrites)
-
         for chan in channels:
             await guild.create_text_channel(chan, category=category)
 
-    # Step 4: Create invite to #announcements
+    # Step 3: Invite link to #announcements
     ann_channel = discord.utils.get(guild.text_channels, name="announcements")
     invite = await ann_channel.create_invite(max_age=0, unique=True)
 
-    # Step 5: DM the owner
+    # Step 4: DM Owner
     try:
         await ctx.author.send(f"✅ Your **Dev Server** is ready: {invite.url}")
     except:
         await ctx.send("✅ Server created, but I couldn’t DM you the invite.")
 
-    await ctx.send("🎉 **Dev Server successfully created!**\nCheck your server list.")
+    await ctx.send("🎉 **Dev Server successfully created!**")
+
+@bot.command(name="apply")
+async def apply(ctx):
+    """Handles application flow in DMs and sends result to owner."""
+    if ctx.channel.name != "applications":
+        return await ctx.send("❌ You must run this in the #applications channel.")
+
+    try:
+        await ctx.author.send("📋 How many people are in your server?")
+        people_msg = await bot.wait_for(
+            "message",
+            timeout=60,
+            check=lambda m: m.author == ctx.author and isinstance(m.channel, discord.DMChannel)
+        )
+
+        await ctx.author.send("🚗 How many cars are you managing?")
+        cars_msg = await bot.wait_for(
+            "message",
+            timeout=60,
+            check=lambda m: m.author == ctx.author and isinstance(m.channel, discord.DMChannel)
+        )
+
+        owner = (await bot.application_info()).owner
+
+        embed = discord.Embed(
+            title="New Bot Access Application",
+            description=f"**User:** {ctx.author.mention}\n"
+                        f"**Server Size:** {people_msg.content}\n"
+                        f"**Cars Managed:** {cars_msg.content}",
+            color=discord.Color.orange(),
+            timestamp=datetime.utcnow()
+        )
+
+        class ApprovalView(discord.ui.View):
+            @discord.ui.button(label="Yes", style=discord.ButtonStyle.green)
+            async def yes(self, interaction: discord.Interaction, button: discord.ui.Button):
+                if interaction.user.id != owner.id:
+                    return await interaction.response.send_message("❌ You’re not authorized.", ephemeral=True)
+                await interaction.response.send_message("✅ Approved!", ephemeral=True)
+
+            @discord.ui.button(label="No", style=discord.ButtonStyle.red)
+            async def no(self, interaction: discord.Interaction, button: discord.ui.Button):
+                if interaction.user.id != owner.id:
+                    return await interaction.response.send_message("❌ You’re not authorized.", ephemeral=True)
+                await interaction.response.send_message("❌ Denied.", ephemeral=True)
+
+        await owner.send(embed=embed, view=ApprovalView())
+        await ctx.author.send("✅ Application submitted. You'll be contacted shortly.")
+    except Exception:
+        await ctx.send("❌ Failed to DM you. Please open your DMs.")
 
 
 @bot.command()
