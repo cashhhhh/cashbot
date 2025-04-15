@@ -553,7 +553,75 @@ async def on_message_delete(message):
 
         alert_channel = bot.get_channel(1223077287457587221)
 
-                                 
+
+
+import re
+import asyncio
+
+# 🔧 Set your server & log channel IDs
+DEV_SERVER_ID = 1361841087668289697  # <-- REPLACE with your dev server ID
+LOG_CHANNEL_ID = 1361847485961601134  # <-- REPLACE with your log/staff channel ID
+
+# 🧼 Words to watch for (lowercase only)
+FLAGGED_WORDS = [
+    "nigger", "faggot", "retard", "tranny", "rape", "porn", "cp",
+    "grabify", "iplogger", "bootyou", "discord.gg/"
+]
+
+# ✅ Logs when someone joins the dev server
+@bot.event
+async def on_member_join(member):
+    if member.guild.id == DEV_SERVER_ID:
+        log_channel = bot.get_channel(LOG_CHANNEL_ID)
+        await log_channel.send(f"✅ `{member}` joined the dev server. ID: `{member.id}`")
+
+# ❌ Logs when someone leaves the dev server
+@bot.event
+async def on_member_remove(member):
+    if member.guild.id == DEV_SERVER_ID:
+        log_channel = bot.get_channel(LOG_CHANNEL_ID)
+        await log_channel.send(f"❌ `{member}` left or was removed from the dev server. ID: `{member.id}`")
+
+# 👁️ Monitors chat in the dev server
+@bot.event
+async def on_message(message):
+    if message.guild and message.guild.id == DEV_SERVER_ID:
+        if message.author.bot:
+            return
+
+        lowered = message.content.lower()
+
+        for word in FLAGGED_WORDS:
+            if word in lowered:
+                log_channel = bot.get_channel(LOG_CHANNEL_ID)
+                await log_channel.send(
+                    f"🚨 **Flagged Message Detected in Dev Server**\n"
+                    f"User: {message.author.mention} (`{message.author.id}`)\n"
+                    f"Channel: {message.channel.mention}\n"
+                    f"Content: ```{message.content}```"
+                )
+
+                # 🔒 Optionally delete the message:
+                # await message.delete()
+                break
+
+    await bot.process_commands(message)
+
+# 🧾 Manual audit command to list all current dev server members
+@bot.command(name="auditdev")
+@commands.is_owner()
+async def audit_dev_server(ctx):
+    guild = bot.get_guild(DEV_SERVER_ID)
+    if not guild:
+        return await ctx.send("❌ Bot is not in the dev server.")
+
+    members = [f"{m} - {m.id}" for m in guild.members if not m.bot]
+    log_channel = bot.get_channel(LOG_CHANNEL_ID)
+    await log_channel.send(
+        f"🧾 **Current Dev Server Members ({len(members)})**:\n" + "\n".join(members)
+    )
+
+
                                   
 @bot.command(name="builddevserver")
 @commands.is_owner()
