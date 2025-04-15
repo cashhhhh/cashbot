@@ -27,6 +27,11 @@ if os.path.exists('config.json'):
         config = json.load(f)
 else:
     config = {}
+# At the top of your file
+giftcard_cache = {
+    "value": 0.0,
+    "last_updated": 0
+}
 
 
 # Add these global variables at the top with other globals
