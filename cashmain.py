@@ -27,11 +27,26 @@ if os.path.exists('config.json'):
         config = json.load(f)
 else:
     config = {}
-# At the top of your file
+# At top of file if not already present:
 giftcard_cache = {
     "value": 0.0,
+    "used": 0.0,
+    "unused": 0.0,
+    "codes": 0,
     "last_updated": 0
 }
+
+def load_used_codes():
+    used = set()
+    try:
+        with open('used_codes.txt', 'r') as f:
+            for line in f:
+                if ',' in line and not line.startswith('#'):
+                    code = line.strip().split(',')[0]
+                    used.add(code)
+    except FileNotFoundError:
+        pass
+    return used
 
 
 # Add these global variables at the top with other globals
@@ -2760,23 +2775,29 @@ async def blacklist_ban(ctx, user_id: int):
         await ctx.send(f"❌ Error: {str(e)}")
 
 @bot.command(name='giftcardtotal')
-@commands.cooldown(1, 300, commands.BucketType.user)  # 1 use every 5 minutes
+@commands.cooldown(1, 300, commands.BucketType.user)
 @commands.is_owner()
 async def giftcard_total(ctx):
-    """Efficiently check total value of gift cards (cached, optimized, owner-only)."""
+    """Scans inbox for gift card totals and usage info (owner only)."""
     try:
         now = time.time()
-        CACHE_TTL = 300  # seconds
+        CACHE_TTL = 300  # 5 minutes
 
-        # If cached value is still fresh
+        # Use cache if fresh
         if now - giftcard_cache["last_updated"] < CACHE_TTL:
-            cached_val = giftcard_cache["value"]
-            return await ctx.send(f"💳 Cached total gift card value: **${cached_val:.2f}** (cached)")
+            embed = discord.Embed(
+                title="💳 Gift Card Summary (Cached)",
+                description="Results from previous scan (within 5 minutes)",
+                color=discord.Color.teal(),
+                timestamp=datetime.now()
+            )
+            embed.add_field(name="Total Detected", value=f"${giftcard_cache['value']:.2f}", inline=True)
+            embed.add_field(name="Used Value", value=f"${giftcard_cache['used']:.2f}", inline=True)
+            embed.add_field(name="Available", value=f"${giftcard_cache['unused']:.2f}", inline=True)
+            embed.add_field(name="Codes Found", value=str(giftcard_cache['codes']), inline=True)
+            return await ctx.send(embed=embed)
 
-        loading_msg = await ctx.send("🔄 Scanning the inbox for gift cards... This may take a few seconds.")
-
-        total_found = 0
-        checked_emails = 0
+        loading_msg = await ctx.send("🔄 Scanning inbox for gift cards... Please wait.")
 
         imap = imaplib.IMAP4_SSL("imap.gmail.com")
         EMAIL = os.getenv('GMAIL_EMAIL')
@@ -2784,16 +2805,22 @@ async def giftcard_total(ctx):
         imap.login(EMAIL, PASSWORD)
         imap.select("inbox")
 
-        # Only scan most recent 1000 emails
         _, messages = imap.search(None, 'ALL')
-        email_ids = messages[0].split()[-1000:]
+        email_ids = messages[0].split()[-1000:]  # Last 1000 emails only
 
-        for email_id in reversed(email_ids):  # Start with newest
-            checked_emails += 1
+        used_codes = load_used_codes()
+
+        total_value = 0.0
+        used_value = 0.0
+        unused_value = 0.0
+        code_count = 0
+
+        for email_id in reversed(email_ids):
             _, msg = imap.fetch(email_id, '(RFC822)')
             raw = msg[0][1]
             email_message = email.message_from_bytes(raw)
 
+            # Extract body
             body = ""
             if email_message.is_multipart():
                 for part in email_message.walk():
@@ -2809,40 +2836,55 @@ async def giftcard_total(ctx):
                 except:
                     continue
 
-            patterns = [
-                r'\$(\d+\.\d{2})\s*USD',
-                r'Value:\s*\$(\d+\.\d{2})',
-                r'Amount:\s*\$(\d+\.\d{2})',
-                r'Card Value:\s*\$(\d+\.\d{2})',
-                r'Gift Card.*?Value.*?\$(\d+\.\d{2})',
-            ]
+            # Patterns
+            amount_pattern = r'\$\s*(\d+(?:\.\d{2})?)\s*(?:USD)?'
+            code_pattern = r'(?:code|number|card)[^\d]*(\d{13,19})'
 
-            for pattern in patterns:
-                found = re.findall(pattern, body, re.IGNORECASE | re.DOTALL)
-                for amount in found:
+            amounts = re.findall(amount_pattern, body, re.IGNORECASE)
+            codes = [m.group(1) for m in re.finditer(code_pattern, body, re.IGNORECASE)]
+
+            if amounts and codes:
+                for amount_str, code in zip(amounts, codes):
                     try:
-                        total_found += float(amount)
+                        amount = float(amount_str)
+                        code_count += 1
+                        total_value += amount
+                        if code in used_codes:
+                            used_value += amount
+                        else:
+                            unused_value += amount
                     except:
                         continue
 
         imap.close()
         imap.logout()
 
-        # Update cache
-        giftcard_cache["value"] = total_found
-        giftcard_cache["last_updated"] = now
+        # Cache results
+        giftcard_cache.update({
+            "value": total_value,
+            "used": used_value,
+            "unused": unused_value,
+            "codes": code_count,
+            "last_updated": now
+        })
 
         embed = discord.Embed(
-            title="💳 Gift Card Total",
-            description=f"**${total_found:.2f}** found in the latest {checked_emails} emails.",
+            title="💳 Gift Card Summary",
+            description="Latest scan of inbox (last 1,000 emails)",
             color=discord.Color.green(),
             timestamp=datetime.now()
         )
+        embed.add_field(name="Total Detected", value=f"${total_value:.2f}", inline=True)
+        embed.add_field(name="Used Value", value=f"${used_value:.2f}", inline=True)
+        embed.add_field(name="Available", value=f"${unused_value:.2f}", inline=True)
+        embed.add_field(name="Codes Found", value=str(code_count), inline=True)
+
         await loading_msg.edit(content=None, embed=embed)
 
     except Exception as e:
         logging.error(f"GiftCardTotal Error: {str(e)}")
-        await ctx.send("❌ Error scanning gift cards.")
+        await ctx.send("❌ Error while scanning gift card total.")
+
 
 @bot.event
 async def on_member_join(member):
