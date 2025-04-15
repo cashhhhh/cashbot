@@ -2687,29 +2687,40 @@ async def blacklist_ban(ctx, user_id: int):
         await ctx.send(f"❌ Error: {str(e)}")
 
 @bot.command(name='giftcardtotal')
+@commands.cooldown(1, 300, commands.BucketType.user)  # 1 use every 5 minutes
 @commands.is_owner()
 async def giftcard_total(ctx):
-    """Check the total value of available gift cards (entire inbox, no storage)."""
+    """Efficiently check total value of gift cards (cached, optimized, owner-only)."""
     try:
-        total_found = 0
+        now = time.time()
+        CACHE_TTL = 300  # seconds
 
-        # Connect to IMAP
+        # If cached value is still fresh
+        if now - giftcard_cache["last_updated"] < CACHE_TTL:
+            cached_val = giftcard_cache["value"]
+            return await ctx.send(f"💳 Cached total gift card value: **${cached_val:.2f}** (cached)")
+
+        loading_msg = await ctx.send("🔄 Scanning the inbox for gift cards... This may take a few seconds.")
+
+        total_found = 0
+        checked_emails = 0
+
         imap = imaplib.IMAP4_SSL("imap.gmail.com")
         EMAIL = os.getenv('GMAIL_EMAIL')
         PASSWORD = os.getenv('GMAIL_PASSWORD')
         imap.login(EMAIL, PASSWORD)
         imap.select("inbox")
 
-        # Search every email in inbox
+        # Only scan most recent 1000 emails
         _, messages = imap.search(None, 'ALL')
-        email_ids = messages[0].split()
+        email_ids = messages[0].split()[-1000:]
 
-        for email_id in email_ids:
+        for email_id in reversed(email_ids):  # Start with newest
+            checked_emails += 1
             _, msg = imap.fetch(email_id, '(RFC822)')
-            email_body = msg[0][1]
-            email_message = email.message_from_bytes(email_body)
+            raw = msg[0][1]
+            email_message = email.message_from_bytes(raw)
 
-            # Get email content
             body = ""
             if email_message.is_multipart():
                 for part in email_message.walk():
@@ -2725,7 +2736,6 @@ async def giftcard_total(ctx):
                 except:
                     continue
 
-            # Look for dollar amounts
             patterns = [
                 r'\$(\d+\.\d{2})\s*USD',
                 r'Value:\s*\$(\d+\.\d{2})',
@@ -2745,17 +2755,21 @@ async def giftcard_total(ctx):
         imap.close()
         imap.logout()
 
+        # Update cache
+        giftcard_cache["value"] = total_found
+        giftcard_cache["last_updated"] = now
+
         embed = discord.Embed(
-            title="💳 Total Gift Card Value",
-            description=f"**${total_found:.2f}** found across all emails.",
+            title="💳 Gift Card Total",
+            description=f"**${total_found:.2f}** found in the latest {checked_emails} emails.",
             color=discord.Color.green(),
             timestamp=datetime.now()
         )
-        await ctx.send(embed=embed)
+        await loading_msg.edit(content=None, embed=embed)
 
     except Exception as e:
         logging.error(f"GiftCardTotal Error: {str(e)}")
-        await ctx.send("❌ Error calculating gift card total.")
+        await ctx.send("❌ Error scanning gift cards.")
 
 @bot.event
 async def on_member_join(member):
