@@ -621,6 +621,27 @@ async def audit_dev_server(ctx):
         f"🧾 **Current Dev Server Members ({len(members)})**:\n" + "\n".join(members)
     )
 
+import re
+
+@bot.command(name="remindme")
+async def remind_me(ctx, time_str: str, *, reminder: str = "You asked to be reminded."):
+    """Set a reminder. Example: !remindme 15m Do something."""
+    
+    # Convert time string (e.g. 10m, 5s, 1h) to seconds
+    match = re.match(r"^(\d+)([smh])$", time_str.lower())
+    if not match:
+        return await ctx.send("❌ Invalid time format. Use like `10s`, `15m`, or `1h`.")
+
+    amount, unit = match.groups()
+    seconds = int(amount) * {"s": 1, "m": 60, "h": 3600}[unit]
+
+    await ctx.send(f"✅ I’ll remind you in {amount}{unit}.")
+
+    try:
+        await asyncio.sleep(seconds)
+        await ctx.author.send(f"⏰ Reminder: {reminder}")
+    except Exception as e:
+        print(f"[Reminder Error] {e}")
 
                                   
 @bot.command(name="builddevserver")
