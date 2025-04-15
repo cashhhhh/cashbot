@@ -559,14 +559,15 @@ async def on_message_delete(message):
 @bot.command(name="builddevserver")
 @commands.is_owner()
 async def build_dev_server(ctx):
-    """Creates a full Dev Server with roles, channels, permissions, and invite."""
+    """Creates a fully configured Dev Server with roles, channels, permissions, and invite."""
     await ctx.send("🛠️ Creating **Cash Bot Dev Server**...")
 
+    # Step 1: Create the new guild (server)
     guild = await bot.create_guild(name="Cash Bot Dev Server")
     await asyncio.sleep(5)
     guild = discord.utils.get(bot.guilds, name="Cash Bot Dev Server")
 
-    # Step 1: Roles
+    # Step 2: Create roles with permissions
     perms = discord.Permissions
     roles = {
         "Bot Owner": perms(administrator=True),
@@ -576,10 +577,11 @@ async def build_dev_server(ctx):
     }
 
     role_refs = {}
-    for name, permissions in roles.items():
-        role_refs[name] = await guild.create_role(name=name, permissions=permissions)
+    for role_name, role_perms in roles.items():
+        role = await guild.create_role(name=role_name, permissions=role_perms)
+        role_refs[role_name] = role
 
-    # Step 2: Categories and Channels
+    # Step 3: Define categories and channels
     categories = {
         "📢 BOT HQ": ["announcements", "changelog", "alerts"],
         "🔧 LOGS": ["training-logs", "credit-transfers", "checkticket-logs", "errors"],
@@ -588,7 +590,8 @@ async def build_dev_server(ctx):
         "📝 ONBOARDING": ["applications"]
     }
 
-    for cat_name, channels in categories.items():
+    # Step 4: Create categories and channels with permissions
+    for cat_name, channel_list in categories.items():
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
             role_refs["Bot Owner"]: discord.PermissionOverwrite(read_messages=True, send_messages=True),
@@ -596,22 +599,23 @@ async def build_dev_server(ctx):
             role_refs["Trusted Admin"]: discord.PermissionOverwrite(read_messages=True, send_messages=True),
         }
 
-        category = await guild.create_category(cat_name, overwrites=overwrites)
-        for chan in channels:
-            await guild.create_text_channel(chan, category=category)
+        category = await guild.create_category(name=cat_name, overwrites=overwrites)
 
-    # Step 3: Invite link to #announcements
+        for chan_name in channel_list:
+            await guild.create_text_channel(name=chan_name, category=category)
+
+    # Step 5: Create invite to #announcements
     ann_channel = discord.utils.get(guild.text_channels, name="announcements")
     invite = await ann_channel.create_invite(max_age=0, unique=True)
 
-    # Step 4: DM Owner
+    # Step 6: DM the bot owner with the invite
     try:
         await ctx.author.send(f"✅ Your **Dev Server** is ready: {invite.url}")
     except:
         await ctx.send("✅ Server created, but I couldn’t DM you the invite.")
 
-    await ctx.send("🎉 **Dev Server successfully created!**")
-
+    # Final confirmation in the source server
+    await ctx.send("🎉 **Dev Server successfully created!** Check your server list.")
 @bot.command(name="apply")
 async def apply(ctx):
     """Handles application flow in DMs and sends result to owner."""
