@@ -819,12 +819,14 @@ user_training_sessions = {}
 @bot.command(name="leaveserver")
 @commands.is_owner()
 async def leave_server_by_id(ctx, server_id: int):
-    """Owner-only command: makes the bot leave a specific server by ID."""
-    guild = bot.get_guild(server_id)
-    if not guild:
-        return await ctx.send("❌ Server not found or bot is not in that server.")
+    """Owner-only command: bot leaves a server by its ID."""
+    guild = discord.utils.get(bot.guilds, id=server_id)
 
-    await ctx.send(f"⚠️ About to leave **{guild.name}** (`{server_id}`). Type `confirm {server_id}` within 15 seconds to proceed.")
+    if not guild:
+        return await ctx.send("❌ The bot is not currently in that server or the ID is invalid.")
+
+    await ctx.send(f"⚠️ Are you sure you want me to leave **{guild.name}** (`{server_id}`)?\n"
+                   f"Type `confirm {server_id}` within 15 seconds to confirm.")
 
     def check(m):
         return m.author == ctx.author and m.channel == ctx.channel and m.content.lower() == f"confirm {server_id}"
@@ -834,7 +836,10 @@ async def leave_server_by_id(ctx, server_id: int):
         await ctx.send(f"👋 Leaving server: **{guild.name}**")
         await guild.leave()
     except asyncio.TimeoutError:
-        await ctx.send("⏰ Cancelled. Bot will not leave.")
+        await ctx.send("⏰ Cancelled. No confirmation received.")
+    except discord.HTTPException as e:
+        await ctx.send(f"❌ Failed to leave the server: {e}")
+
 
 
 @bot.command(name="train")
