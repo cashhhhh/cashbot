@@ -283,7 +283,7 @@ async def checkticket(ctx, amount: float, unread_only: bool = True):
                 logging.error(
                     f"Failed to send traffic alert to {user_id}: {e}")
 
-    allowed_role_ids = [110352276007394516, 1325902622120738866, 1361045953296990490]
+    allowed_role_ids = [110352276007394516, 1325902622120738866, 1361045953296990490, 1332736087029710958]
     is_owner = str(ctx.author.id) in OWNER_IDS
     has_role = any(role.id in allowed_role_ids for role in ctx.author.roles)
 
