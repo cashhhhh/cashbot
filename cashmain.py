@@ -551,35 +551,39 @@ async def on_guild_channel_create(channel):
         owner_mention = " ".join(f"<@{oid}>" for oid in COMMISSION_CONFIG['owner_ids'])
         await channel.send(f"{owner_mention} New commission claim started")
 
-# ✅ Reposting Webhook Messages by Polling with Debug Output
 from discord.ext import tasks
 
-@tasks.loop(seconds=10)  # Poll every 10 seconds
-async def poll_psrp_webhook():
-    try:
-        print("🔄 polling PSRP channel...")
+@tasks.loop(seconds=10)
+async def auto_repost_psrp():
+    print("🔄 Running auto_repost_psrp...")
 
+    try:
         psrp_channel = bot.get_channel(1361882298282283161)
         alert_channel_1 = bot.get_channel(1361847485961601134)
         alert_channel_2 = bot.get_channel(1223077287457587221)
 
-        if not psrp_channel or not alert_channel_1 or not alert_channel_2:
-            print("❌ One or more target channels not found.")
+        if not psrp_channel:
+            print("❌ psrp_channel is None")
+        if not alert_channel_1:
+            print("❌ alert_channel_1 is None")
+        if not alert_channel_2:
+            print("❌ alert_channel_2 is None")
+        if not (psrp_channel and alert_channel_1 and alert_channel_2):
             return
 
         messages = [msg async for msg in psrp_channel.history(limit=1)]
         if not messages:
-            print("⚠️ No messages found in PSRP channel.")
+            print("⚠️ No messages found in PSRP channel")
             return
 
         last_msg = messages[0]
-        print(f"📨 Last message ID: {last_msg.id}, Author: {last_msg.author}")
+        print(f"📨 Last Message ID: {last_msg.id}, Author: {last_msg.author}")
 
-        if hasattr(bot, 'last_seen_msg_id') and bot.last_seen_msg_id == last_msg.id:
-            print("✅ Already processed this message.")
+        if hasattr(bot, 'last_msg_id') and bot.last_msg_id == last_msg.id:
+            print("✅ Already posted this message.")
             return
 
-        bot.last_seen_msg_id = last_msg.id
+        bot.last_msg_id = last_msg.id
 
         if last_msg.content:
             content = last_msg.content
@@ -588,25 +592,26 @@ async def poll_psrp_webhook():
         else:
             content = "[No content found]"
 
+        print(f"📦 Posting content: {content}")
+
         embed = discord.Embed(
-            title="🔁 Auto-Repost from PSRP",
+            title="🔁 PSRP Auto Repost",
             description=content,
-            color=0x3498db
+            color=0x00b0f4
         )
+
         await alert_channel_1.send(embed=embed)
         await alert_channel_2.send(embed=embed)
-        print("✅ Reposted message to both alert channels.")
+        print("✅ Sent to both channels.")
 
     except Exception as e:
-        print(f"❌ Error in webhook polling: {e}")
+        print(f"❌ Exception in loop: {e}")
 
-# ✅ Start the polling task when the bot is ready
+
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user}")
-    print("📡 Starting PSRP webhook polling loop...")
-    poll_psrp_webhook.start()
-
+    auto_repost_psrp.start()
 
 # ✅ Error Handler
 @bot.event
@@ -2888,52 +2893,9 @@ async def checkticket_log(ctx, amount: float, unread_only: bool = True):
 
 from discord.ext import tasks
 
-@tasks.loop(seconds=10)
-async def auto_repost_psrp():
-    try:
-        psrp_channel = bot.get_channel(1361882298282283161)
-        alert_channel_1 = bot.get_channel(1361847485961601134)
-        alert_channel_2 = bot.get_channel(1223077287457587221)
 
-        if not psrp_channel or not alert_channel_1 or not alert_channel_2:
-            print("❌ One or more channels not found.")
-            return
 
-        messages = [msg async for msg in psrp_channel.history(limit=1)]
-        if not messages:
-            print("⚠️ No messages found.")
-            return
 
-        last_msg = messages[0]
-        if hasattr(bot, 'last_msg_id') and bot.last_msg_id == last_msg.id:
-            return  # Already posted this one
-
-        bot.last_msg_id = last_msg.id
-
-        if last_msg.content:
-            content = last_msg.content
-        elif last_msg.embeds:
-            content = last_msg.embeds[0].description or str(last_msg.embeds[0].to_dict())
-        else:
-            content = "[No content found]"
-
-        embed = discord.Embed(
-            title="🔁 PSRP Auto Repost",
-            description=content,
-            color=0x00b0f4
-        )
-
-        await alert_channel_1.send(embed=embed)
-        await alert_channel_2.send(embed=embed)
-        print("✅ Reposted message.")
-
-    except Exception as e:
-        print(f"❌ Repost error: {e}")
-
-@bot.event
-async def on_ready():
-    print(f"✅ Logged in as {bot.user}")
-    auto_repost_psrp.start()
 
 
 
