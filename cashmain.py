@@ -7,19 +7,22 @@ import logging
 import time
 import imaplib
 import email
-import re
 from datetime import datetime, timedelta
 from email.header import decode_header
 from flask import Flask, redirect, request
-import discord 
+import discord
 from discord.ext import commands
+from discord.ui import Button, View
 import threading
 import asyncio
 import boto3  # AWS SDK for Python
 import psutil
 import json
-import os
-from discord.ui import Button, View
+from dotenv import load_dotenv
+
+
+
+
 
 # Load or create a config file
 if os.path.exists('config.json'):
@@ -241,7 +244,75 @@ ALERT_USER_IDS = [480028928329777163,
 
 
 
+load_dotenv()
 
+WEBHOOK_URL = os.getenv("KEY_TRACKER_WEBHOOK")
+
+last_webhook_time = 0
+
+def send_to_webhook(
+    content: str = None,
+    username: str = "CashBot Logger",
+    avatar_url: str = None,
+    embed_title: str = None,
+    embed_description: str = None,
+    embed_fields: list = None,
+    color: int = 0xFF0000
+):
+    global last_webhook_time
+
+    if not WEBHOOK_URL:
+        print("❌ WEBHOOK_URL not found.")
+        return
+
+    # Optional delay to stay within safe limits
+    now = time.time()
+    if now - last_webhook_time < 0.25:  # ~4 messages per second max
+        time.sleep(0.3)
+
+    data = {
+        "username": username,
+    }
+
+    if content:
+        data["content"] = content
+    if avatar_url:
+        data["avatar_url"] = avatar_url
+
+    if embed_title or embed_description or embed_fields:
+        embed = {
+            "title": embed_title or "",
+            "description": embed_description or "",
+            "color": color,
+            "fields": []
+        }
+        if embed_fields:
+            for name, value, inline in embed_fields:
+                embed["fields"].append({
+                    "name": name,
+                    "value": value,
+                    "inline": inline
+                })
+        data["embeds"] = [embed]
+
+    try:
+        response = requests.post(WEBHOOK_URL, json=data)
+        last_webhook_time = time.time()
+
+        if response.status_code == 429:
+            retry_after = response.json().get("retry_after", 1)
+            print(f"⏳ Rate limited. Retrying in {retry_after} seconds...")
+            time.sleep(retry_after)
+            send_to_webhook(  # Recursively retry
+                content, username, avatar_url,
+                embed_title, embed_description, embed_fields, color
+            )
+        elif response.status_code not in [200, 204]:
+            print(f"❌ Webhook failed: {response.status_code} - {response.text}")
+        else:
+            print("✅ Webhook sent.")
+    except Exception as e:
+        print(f"❌ Error sending webhook: {e}")
 
 
 
