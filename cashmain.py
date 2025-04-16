@@ -1056,6 +1056,7 @@ async def skip_training(ctx):
     await ctx.send("⏭️ Step will be skipped on your next message.")
 
 
+# ✅ Final Full Add-On Code — Post to Alert Channel When Webhook Posts in PSRP
 
 @bot.event
 async def on_message(message):
@@ -1064,17 +1065,33 @@ async def on_message(message):
         target_channel = bot.get_channel(1223077287457587221)  # Your private log/alert channel
 
         if target_channel:
-            embed = discord.Embed(
-                title="🔑 PSRP Key Event",
-                description=message.content,
-                color=0x3498db
-            )
-            await target_channel.send(embed=embed)
+            try:
+                content = message.content or "[No message content found]"
+                embed = discord.Embed(
+                    title="🔑 PSRP Key Event",
+                    description=content,
+                    color=0x3498db
+                )
+                await target_channel.send(embed=embed)
+            except Exception as e:
+                print(f"❌ Failed to post webhook alert: {e}")
         else:
             print("❌ Target repost channel not found.")
 
     # Required for commands to work
     await bot.process_commands(message)
+
+
+# ✅ Clean global error handler — suppress unknown command spam
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandNotFound):
+        return  # 🔇 Silently ignore unknown commands
+    elif isinstance(error, commands.MissingPermissions):
+        await ctx.send("⛔ Insufficient permissions")
+    else:
+        await ctx.send(f"⚠️ Error: {str(error)}")
+
 
 
 # ✅ Clean global error handler — suppress unknown command spam
