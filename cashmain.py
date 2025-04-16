@@ -3352,6 +3352,36 @@ async def on_member_join(member):
 
     except Exception as e:
         logging.error(f"Alt detector error: {str(e)}")
+@bot.command()
+@commands.is_owner()  # Optional: restrict to you only
+async def testrepost(ctx):
+    try:
+        psrp_channel = bot.get_channel(1361882298282283161)
+        alert_channel = bot.get_channel(1223077287457587221)
+
+        if not psrp_channel or not alert_channel:
+            await ctx.send("❌ Could not access one or both channels.")
+            return
+
+        messages = [msg async for msg in psrp_channel.history(limit=1)]
+        if not messages:
+            await ctx.send("❌ No recent messages found in PSRP channel.")
+            return
+
+        last_msg = messages[0]
+        content = last_msg.content or "[No content]"
+
+        embed = discord.Embed(
+            title="🧪 Test Repost from PSRP Channel",
+            description=content,
+            color=0x3498db
+        )
+        await alert_channel.send(embed=embed)
+        await ctx.send("✅ Message reposted.")
+
+    except Exception as e:
+        print(f"Error in !testrepost: {e}")
+        await ctx.send(f"❌ Error: {e}")
 
 
 @bot.command(name='audit')
