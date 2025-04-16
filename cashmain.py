@@ -836,6 +836,7 @@ SOURCE_CHANNEL_ID = 1361882298282283161  # PSRP keys channel
 TARGET_CHANNEL_IDS = [1361847485961601134, 1223077287457587221]  # Alert channels
 CHECK_INTERVAL = 5  # Seconds between checks
 DEBUG_MODE = True  # Set to False in production
+OWNER_IDS = [480028928329777163]  # Your user ID
 
 # ===== SETUP LOGGING =====
 logging.basicConfig(
@@ -847,111 +848,118 @@ logging.basicConfig(
     ]
 )
 
-class PSRPReposter(commands.Cog):
-    def __init__(self, bot):
-        self.bot = bot
-        self.last_message_id = 0
-        self.repost_task.start()
+# Global variables
+last_reposted_id = 0
 
-    def cog_unload(self):
-        self.repost_task.cancel()
-
-    async def create_psrp_embed(self, message):
-        """Create formatted embed for PSRP key messages"""
-        embed = discord.Embed(
-            title="🔑 PSRP Key Update",
-            description=message.content,
-            color=0x00ff00,
-            timestamp=message.created_at
+# ===== REPOST FUNCTIONS =====
+async def create_psrp_embed(message):
+    """Create formatted embed for PSRP key messages"""
+    embed = discord.Embed(
+        title="🔑 PSRP Key Update",
+        description=message.content,
+        color=0x00ff00,
+        timestamp=message.created_at
+    )
+    
+    if message.author:
+        embed.set_footer(
+            text=f"Via {message.author.name}",
+            icon_url=message.author.display_avatar.url
         )
-        
-        if message.author:
-            embed.set_footer(
-                text=f"Via {message.author.name}",
-                icon_url=message.author.display_avatar.url
-            )
-        
-        if message.attachments:
-            embed.set_image(url=message.attachments[0].url)
-        
-        return embed
+    
+    if message.attachments:
+        embed.set_image(url=message.attachments[0].url)
+    
+    return embed
 
-    async def repost_to_channels(self, message):
-        """Repost message to all target channels"""
-        embed = await self.create_psrp_embed(message)
-        
-        for channel_id in TARGET_CHANNEL_IDS:
-            try:
-                channel = self.bot.get_channel(channel_id)
-                if channel:
-                    await channel.send(embed=embed)
-                    if DEBUG_MODE:
-                        logging.info(f"Reposted to channel {channel.name} ({channel.id})")
-                else:
-                    logging.warning(f"Channel {channel_id} not found")
-            except Exception as e:
-                logging.error(f"Failed to repost to {channel_id}: {str(e)}")
-
-    @tasks.loop(seconds=CHECK_INTERVAL)
-    async def repost_task(self):
-        """Background task to monitor and repost PSRP key messages"""
+async def repost_to_channels(message):
+    """Repost message to all target channels"""
+    embed = await create_psrp_embed(message)
+    
+    for channel_id in TARGET_CHANNEL_IDS:
         try:
-            channel = self.bot.get_channel(SOURCE_CHANNEL_ID)
-            if not channel:
-                logging.error("Source channel not found!")
-                return
-
-            async for message in channel.history(limit=20, after=datetime.utcnow() - timedelta(minutes=5)):
-                if message.id > self.last_message_id and "PSRP KEYS" in message.content:
-                    if DEBUG_MODE:
-                        logging.info(f"New PSRP message detected: {message.id}")
-                    
-                    await self.repost_to_channels(message)
-                    self.last_message_id = message.id
-
-        except Exception as e:
-            logging.error(f"Repost task error: {str(e)}")
-
-    @commands.command()
-    @commands.is_owner()
-    async def forcerepost(self, ctx, message_id: int = None):
-        """
-        Manually repost a PSRP message
-        Usage: !forcerepost <message_id> or just !forcerepost for latest
-        """
-        try:
-            channel = self.bot.get_channel(SOURCE_CHANNEL_ID)
-            
-            if message_id:
-                message = await channel.fetch_message(message_id)
+            channel = bot.get_channel(channel_id)
+            if channel:
+                await channel.send(embed=embed)
+                if DEBUG_MODE:
+                    logging.info(f"Reposted to channel {channel.name} ({channel.id})")
             else:
-                # Get the most recent PSRP message
-                async for message in channel.history(limit=50):
-                    if "PSRP KEYS" in message.content:
-                        break
-            
-            if not message:
-                await ctx.send("No PSRP message found!")
-                return
-                
-            await self.repost_to_channels(message)
-            await ctx.send(f"✅ Successfully reposted message {message.id}")
-            
-        except discord.NotFound:
-            await ctx.send("❌ Message not found!")
-        except discord.Forbidden:
-            await ctx.send("❌ Missing permissions!")
+                logging.warning(f"Channel {channel_id} not found")
         except Exception as e:
-            await ctx.send(f"❌ Error: {str(e)}")
-            logging.error(f"Force repost error: {str(e)}")
+            logging.error(f"Failed to repost to {channel_id}: {str(e)}")
 
-    @repost_task.before_loop
-    async def before_repost_task(self):
-        await self.bot.wait_until_ready()
-        logging.info("PSRP repost system initialized")
+# ===== BACKGROUND TASK =====
+@tasks.loop(seconds=CHECK_INTERVAL)
+async def auto_repost_psrp():
+    """Background task to monitor and repost PSRP key messages"""
+    global last_reposted_id
+    
+    try:
+        channel = bot.get_channel(SOURCE_CHANNEL_ID)
+        if not channel:
+            logging.error("Source channel not found!")
+            return
 
-async def setup(bot):
-    await bot.add_cog(PSRPReposter(bot))
+        async for message in channel.history(limit=20, after=datetime.utcnow() - timedelta(minutes=5)):
+            if message.id > last_reposted_id and "PSRP KEYS" in message.content:
+                if DEBUG_MODE:
+                    logging.info(f"New PSRP message detected: {message.id}")
+                
+                await repost_to_channels(message)
+                last_reposted_id = message.id
+
+    except Exception as e:
+        logging.error(f"Auto-repost error: {str(e)}")
+
+# ===== COMMAND =====
+@bot.command(name="forcerepost")
+@commands.is_owner()
+async def force_repost(ctx, message_id: int = None):
+    """
+    Manually repost a PSRP message
+    Usage: !forcerepost <message_id> or just !forcerepost for latest
+    """
+    global last_reposted_id
+    
+    try:
+        channel = bot.get_channel(SOURCE_CHANNEL_ID)
+        
+        if message_id:
+            message = await channel.fetch_message(message_id)
+        else:
+            # Get the most recent PSRP message
+            async for message in channel.history(limit=50):
+                if "PSRP KEYS" in message.content:
+                    break
+            else:
+                await ctx.send("❌ No PSRP message found in recent history!")
+                return
+        
+        await repost_to_channels(message)
+        last_reposted_id = message.id
+        await ctx.send(f"✅ Successfully reposted message {message.id}")
+        
+    except discord.NotFound:
+        await ctx.send("❌ Message not found!")
+    except discord.Forbidden:
+        await ctx.send("❌ Missing permissions!")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {str(e)}")
+        logging.error(f"Force repost error: {str(e)}")
+
+# ===== INITIALIZATION =====
+@bot.event
+async def on_ready():
+    """Start the auto-repost task when bot is ready"""
+    global last_reposted_id
+    
+    # Initialize last_reposted_id with most recent message
+    channel = bot.get_channel(SOURCE_CHANNEL_ID)
+    async for message in channel.history(limit=1):
+        last_reposted_id = message.id
+    
+    auto_repost_psrp.start()
+    logging.info("PSRP repost system initialized")
 
 
 @bot.command()
