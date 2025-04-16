@@ -565,14 +565,18 @@ async def on_guild_channel_create(channel):
         owner_mention = " ".join(f"<@{oid}>" for oid in COMMISSION_CONFIG['owner_ids'])
         await channel.send(f"{owner_mention} New commission claim started")
 
+# ✅ Reposting Webhook Messages by Polling Instead of Relying on on_message
+from discord.ext import tasks
+
 @tasks.loop(seconds=10)  # Poll every 10 seconds
 async def poll_psrp_webhook():
     try:
         psrp_channel = bot.get_channel(1361882298282283161)
-        alert_channel = bot.get_channel(1361847485961601134)
+        alert_channel_1 = bot.get_channel(1361847485961601134)
+        alert_channel_2 = bot.get_channel(1223077287457587221)
 
-        if not psrp_channel or not alert_channel:
-            print("❌ PSRP or alert channel not found.")
+        if not psrp_channel or not alert_channel_1 or not alert_channel_2:
+            print("❌ One or more target channels not found.")
             return
 
         messages = [msg async for msg in psrp_channel.history(limit=1)]
@@ -597,7 +601,8 @@ async def poll_psrp_webhook():
             description=content,
             color=0x3498db
         )
-        await alert_channel.send(embed=embed)
+        await alert_channel_1.send(embed=embed)
+        await alert_channel_2.send(embed=embed)
 
     except Exception as e:
         print(f"❌ Error in webhook polling: {e}")
@@ -606,7 +611,19 @@ async def poll_psrp_webhook():
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user}")
+    print("📡 Starting PSRP webhook polling loop...")
     poll_psrp_webhook.start()
+
+
+# ✅ Error Handler
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandNotFound):
+        return
+    elif isinstance(error, commands.MissingPermissions):
+        await ctx.send("⛔ Insufficient permissions")
+    else:
+        await ctx.send(f"⚠️ Error: {str(error)}")
 
 @bot.event
 async def on_message_delete(message):
