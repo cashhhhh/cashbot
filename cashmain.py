@@ -95,13 +95,6 @@ giftcard_codes = {
 
 
 
-    # Remove mentions from content
-    content = ' '.join(word for word in message.content.split()
-                       if not word.startswith('<@'))
-    content = content.lower()
-    score = 0
-    reasons = []
-
     # Age check
     if "age:" in content and any(str(age) in content for age in range(1, 16)):
         reasons.append("❌ Must be 16 or older")
