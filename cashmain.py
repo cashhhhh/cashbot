@@ -832,7 +832,7 @@ import logging
 from datetime import datetime, timedelta
 
 # ===== CONFIGURATION =====
-SOURCE_CHANNEL_ID = 1361882298282283161  # PSRP keys channel
+SOURCE_CHANNEL_ID = 1361882298282283161  # PSRP webhook channel
 TARGET_CHANNEL_IDS = [1361847485961601134, 1223077287457587221]  # Alert channels
 CHECK_INTERVAL = 5  # Seconds between checks
 DEBUG_MODE = True  # Set to False in production
@@ -853,7 +853,7 @@ last_reposted_id = 0
 
 # ===== REPOST FUNCTIONS =====
 async def create_psrp_embed(message):
-    """Create formatted embed for PSRP key messages"""
+    """Create formatted embed for PSRP messages"""
     embed = discord.Embed(
         title="🔑 PSRP Key Update",
         description=message.content,
@@ -861,11 +861,13 @@ async def create_psrp_embed(message):
         timestamp=message.created_at
     )
     
-    if message.author:
-        embed.set_footer(
-            text=f"Via {message.author.name}",
-            icon_url=message.author.display_avatar.url
-        )
+    # Use webhook name if available
+    if message.webhook_id:
+        if message.author:  # Webhook messages have authors too
+            embed.set_footer(
+                text=f"Via {message.author.name}",
+                icon_url=message.author.display_avatar.url
+            )
     
     if message.attachments:
         embed.set_image(url=message.attachments[0].url)
@@ -891,7 +893,7 @@ async def repost_to_channels(message):
 # ===== BACKGROUND TASK =====
 @tasks.loop(seconds=CHECK_INTERVAL)
 async def auto_repost_psrp():
-    """Background task to monitor and repost PSRP key messages"""
+    """Monitor and repost PSRP webhook messages"""
     global last_reposted_id
     
     try:
@@ -901,9 +903,13 @@ async def auto_repost_psrp():
             return
 
         async for message in channel.history(limit=20, after=datetime.utcnow() - timedelta(minutes=5)):
-            if message.id > last_reposted_id and "PSRP KEYS" in message.content:
+            # Only process webhook messages with PSRP content
+            if (message.id > last_reposted_id and 
+                message.webhook_id and 
+                ("PSRP KEYS" in message.content or "PSRP" in message.content)):
+                
                 if DEBUG_MODE:
-                    logging.info(f"New PSRP message detected: {message.id}")
+                    logging.info(f"New PSRP webhook message detected: {message.id}")
                 
                 await repost_to_channels(message)
                 last_reposted_id = message.id
@@ -916,7 +922,7 @@ async def auto_repost_psrp():
 @commands.is_owner()
 async def force_repost(ctx, message_id: int = None):
     """
-    Manually repost a PSRP message
+    Manually repost a PSRP webhook message
     Usage: !forcerepost <message_id> or just !forcerepost for latest
     """
     global last_reposted_id
@@ -926,18 +932,21 @@ async def force_repost(ctx, message_id: int = None):
         
         if message_id:
             message = await channel.fetch_message(message_id)
+            if not message.webhook_id:
+                await ctx.send("❌ That message isn't from a webhook!")
+                return
         else:
-            # Get the most recent PSRP message
+            # Get the most recent PSRP webhook message
             async for message in channel.history(limit=50):
-                if "PSRP KEYS" in message.content:
+                if message.webhook_id and ("PSRP KEYS" in message.content or "PSRP" in message.content):
                     break
             else:
-                await ctx.send("❌ No PSRP message found in recent history!")
+                await ctx.send("❌ No PSRP webhook message found in recent history!")
                 return
         
         await repost_to_channels(message)
         last_reposted_id = message.id
-        await ctx.send(f"✅ Successfully reposted message {message.id}")
+        await ctx.send(f"✅ Successfully reposted webhook message {message.id}")
         
     except discord.NotFound:
         await ctx.send("❌ Message not found!")
@@ -950,16 +959,22 @@ async def force_repost(ctx, message_id: int = None):
 # ===== INITIALIZATION =====
 @bot.event
 async def on_ready():
-    """Start the auto-repost task when bot is ready"""
+    """Initialize the repost system"""
     global last_reposted_id
     
-    # Initialize last_reposted_id with most recent message
-    channel = bot.get_channel(SOURCE_CHANNEL_ID)
-    async for message in channel.history(limit=1):
-        last_reposted_id = message.id
-    
-    auto_repost_psrp.start()
-    logging.info("PSRP repost system initialized")
+    try:
+        # Initialize with most recent webhook message
+        channel = bot.get_channel(SOURCE_CHANNEL_ID)
+        async for message in channel.history(limit=50):
+            if message.webhook_id and ("PSRP KEYS" in message.content or "PSRP" in message.content):
+                last_reposted_id = message.id
+                break
+        
+        auto_repost_psrp.start()
+        logging.info(f"PSRP repost system initialized. Last message ID: {last_reposted_id}")
+        
+    except Exception as e:
+        logging.error(f"Initialization error: {str(e)}")
 
 
 @bot.command()
