@@ -243,74 +243,36 @@ ALERT_USER_IDS = [480028928329777163,
                   230803708034678786]  # Users to notify on spike
 
 
-load_dotenv()
-WEBHOOK_URL = os.getenv("KEY_TRACKER_WEBHOOK")
-last_webhook_time = 0
+# ✅ Bot-Based Reposting of PSRP Webhook Messages (No Webhook Needed)
+import discord
+from discord.ext import commands
 
-# ✅ Send Message or Embed to Outbound Webhook
-def send_to_webhook(
-    content: str = None,
-    username: str = "CashBot Logger",
-    avatar_url: str = None,
-    embed_title: str = None,
-    embed_description: str = None,
-    embed_fields: list = None,
-    color: int = 0xFF0000
-):
-    global last_webhook_time
+# Discord Bot Setup (if not already defined)
+intents = discord.Intents.all()
+bot = commands.Bot(command_prefix='!', intents=intents)
 
-    if not WEBHOOK_URL:
-        print("❌ WEBHOOK_URL not found.")
-        return
+# Channel IDs
+PSRP_WEBHOOK_CHANNEL_ID = 1361882298282283161
+REPOST_TARGET_CHANNEL_ID = 1223077287457587221
 
-    now = time.time()
-    if now - last_webhook_time < 0.25:
-        time.sleep(0.3)
-
-    data = {"username": username}
-    if content:
-        data["content"] = content
-    if avatar_url:
-        data["avatar_url"] = avatar_url
-
-    if embed_title or embed_description or embed_fields:
-        embed = {
-            "title": embed_title or "",
-            "description": embed_description or "",
-            "color": color,
-            "fields": []
-        }
-        if embed_fields:
-            for name, value, inline in embed_fields:
-                embed["fields"].append({"name": name, "value": value, "inline": inline})
-        data["embeds"] = [embed]
-
-    try:
-        response = requests.post(WEBHOOK_URL, json=data)
-        last_webhook_time = time.time()
-
-        if response.status_code == 429:
-            retry_after = response.json().get("retry_after", 1)
-            print(f"⏳ Rate limited. Retrying in {retry_after} seconds...")
-            time.sleep(retry_after)
-            send_to_webhook(content, username, avatar_url, embed_title, embed_description, embed_fields, color)
-        elif response.status_code not in [200, 204]:
-            print(f"❌ Webhook failed: {response.status_code} - {response.text}")
-        else:
-            print("✅ Webhook sent.")
-    except Exception as e:
-        print(f"❌ Error sending webhook: {e}")
-
-# ✅ Auto-forward PSRP webhook posts to outbound webhook
 @bot.event
 async def on_message(message):
-    if message.channel.id == 1361882298282283161 and message.webhook_id:
-        send_to_webhook(
-            embed_title="🔑 PSRP Key Event",
-            embed_description=message.content,
-            color=0x3498db
-        )
+    # Only respond to PSRP webhook messages
+    if message.channel.id == PSRP_WEBHOOK_CHANNEL_ID and message.webhook_id:
+        target_channel = bot.get_channel(REPOST_TARGET_CHANNEL_ID)
+
+        if target_channel:
+            embed = discord.Embed(
+                title="🔑 PSRP Key Event",
+                description=message.content,
+                color=0x3498db
+            )
+            await target_channel.send(embed=embed)
+        else:
+            print("❌ Could not find the target repost channel.")
+
     await bot.process_commands(message)
+
 
 
 
