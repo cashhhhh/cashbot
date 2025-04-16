@@ -1,5 +1,6 @@
 
 
+
 import re
 import os
 import pickle
@@ -143,11 +144,6 @@ async def evaluate_application(message):
         embed.add_field(name="Reasons", value="\n".join(reasons), inline=False)
 
     return embed
-@bot.event
-async def on_command_error(ctx, error):
-    if isinstance(error, commands.CommandNotFound):
-        return  # 👈 Silently ignore unknown commands
-    raise error  # Let other errors still show up
 
 
 def get_emails_imap(guild_id, unread_only=True):
@@ -248,19 +244,74 @@ ALERT_USER_IDS = [480028928329777163,
                   230803708034678786]  # Users to notify on spike
 
 
+load_dotenv()
+WEBHOOK_URL = os.getenv("KEY_TRACKER_WEBHOOK")
+last_webhook_time = 0
 
+# ✅ Send Message or Embed to Outbound Webhook
+def send_to_webhook(
+    content: str = None,
+    username: str = "CashBot Logger",
+    avatar_url: str = None,
+    embed_title: str = None,
+    embed_description: str = None,
+    embed_fields: list = None,
+    color: int = 0xFF0000
+):
+    global last_webhook_time
 
-
-
-# ✅ Error Handler
-@bot.event
-async def on_command_error(ctx, error):
-    if isinstance(error, commands.CommandNotFound):
+    if not WEBHOOK_URL:
+        print("❌ WEBHOOK_URL not found.")
         return
-    elif isinstance(error, commands.MissingPermissions):
-        await ctx.send("⛔ Insufficient permissions")
-    else:
-        await ctx.send(f"⚠️ Error: {str(error)}")
+
+    now = time.time()
+    if now - last_webhook_time < 0.25:
+        time.sleep(0.3)
+
+    data = {"username": username}
+    if content:
+        data["content"] = content
+    if avatar_url:
+        data["avatar_url"] = avatar_url
+
+    if embed_title or embed_description or embed_fields:
+        embed = {
+            "title": embed_title or "",
+            "description": embed_description or "",
+            "color": color,
+            "fields": []
+        }
+        if embed_fields:
+            for name, value, inline in embed_fields:
+                embed["fields"].append({"name": name, "value": value, "inline": inline})
+        data["embeds"] = [embed]
+
+    try:
+        response = requests.post(WEBHOOK_URL, json=data)
+        last_webhook_time = time.time()
+
+        if response.status_code == 429:
+            retry_after = response.json().get("retry_after", 1)
+            print(f"⏳ Rate limited. Retrying in {retry_after} seconds...")
+            time.sleep(retry_after)
+            send_to_webhook(content, username, avatar_url, embed_title, embed_description, embed_fields, color)
+        elif response.status_code not in [200, 204]:
+            print(f"❌ Webhook failed: {response.status_code} - {response.text}")
+        else:
+            print("✅ Webhook sent.")
+    except Exception as e:
+        print(f"❌ Error sending webhook: {e}")
+
+# ✅ Auto-forward PSRP webhook posts to outbound webhook
+@bot.event
+async def on_message(message):
+    if message.channel.id == 1361882298282283161 and message.webhook_id:
+        send_to_webhook(
+            embed_title="🔑 PSRP Key Event",
+            embed_description=message.content,
+            color=0x3498db
+        )
+    await bot.process_commands(message)
 
 
 
@@ -551,90 +602,12 @@ async def on_guild_channel_create(channel):
         owner_mention = " ".join(f"<@{oid}>" for oid in COMMISSION_CONFIG['owner_ids'])
         await channel.send(f"{owner_mention} New commission claim started")
 
-from discord.ext import tasks
-
-@tasks.loop(seconds=10)
-async def auto_repost_psrp():
-    print("🔄 Running auto_repost_psrp...")
-
-    try:
-        psrp_channel = bot.get_channel(1361882298282283161)
-        alert_channel_1 = bot.get_channel(1361847485961601134)
-        alert_channel_2 = bot.get_channel(1223077287457587221)
-
-        if not psrp_channel:
-            print("❌ psrp_channel is None")
-        if not alert_channel_1:
-            print("❌ alert_channel_1 is None")
-        if not alert_channel_2:
-            print("❌ alert_channel_2 is None")
-        if not (psrp_channel and alert_channel_1 and alert_channel_2):
-            return
-
-        messages = [msg async for msg in psrp_channel.history(limit=1)]
-        if not messages:
-            print("⚠️ No messages found in PSRP channel")
-            return
-
-        last_msg = messages[0]
-        print(f"📨 Last Message ID: {last_msg.id}, Author: {last_msg.author}")
-
-        if hasattr(bot, 'last_msg_id') and bot.last_msg_id == last_msg.id:
-            print("✅ Already posted this message.")
-            return
-
-        bot.last_msg_id = last_msg.id
-
-        if last_msg.content:
-            content = last_msg.content
-        elif last_msg.embeds:
-            content = last_msg.embeds[0].description or str(last_msg.embeds[0].to_dict())
-        else:
-            content = "[No content found]"
-
-        print(f"📦 Posting content: {content}")
-
-        embed = discord.Embed(
-            title="🔁 PSRP Auto Repost",
-            description=content,
-            color=0x00b0f4
-        )
-
-        await alert_channel_1.send(embed=embed)
-        await alert_channel_2.send(embed=embed)
-        print("✅ Sent to both channels.")
-
-    except Exception as e:
-        print(f"❌ Exception in loop: {e}")
 
 
 @bot.event
-async def on_ready():
-    print(f"✅ Logged in as {bot.user}")
-    auto_repost_psrp.start()
-
-# ✅ Error Handler
-@bot.event
-async def on_command_error(ctx, error):
-    if isinstance(error, commands.CommandNotFound):
+async def on_message_delete(message):
+    if message.author.bot:
         return
-    elif isinstance(error, commands.MissingPermissions):
-        await ctx.send("⛔ Insufficient permissions")
-    else:
-        await ctx.send(f"⚠️ Error: {str(error)}")
-
-
-# ✅ Error Handler
-@bot.event
-async def on_command_error(ctx, error):
-    if isinstance(error, commands.CommandNotFound):
-        return
-    elif isinstance(error, commands.MissingPermissions):
-        await ctx.send("⛔ Insufficient permissions")
-    else:
-        await ctx.send(f"⚠️ Error: {str(error)}")
-
-
 
     if message.mentions:
         content = message.content or "*[no text]*"
@@ -679,7 +652,30 @@ async def on_member_remove(member):
         log_channel = bot.get_channel(LOG_CHANNEL_ID)
         await log_channel.send(f"❌ `{member}` left or was removed from the dev server. ID: `{member.id}`")
 
+# 👁️ Monitors chat in the dev server
+@bot.event
+async def on_message(message):
+    if message.guild and message.guild.id == DEV_SERVER_ID:
+        if message.author.bot:
+            return
 
+        lowered = message.content.lower()
+
+        for word in FLAGGED_WORDS:
+            if word in lowered:
+                log_channel = bot.get_channel(LOG_CHANNEL_ID)
+                await log_channel.send(
+                    f"🚨 **Flagged Message Detected in Dev Server**\n"
+                    f"User: {message.author.mention} (`{message.author.id}`)\n"
+                    f"Channel: {message.channel.mention}\n"
+                    f"Content: ```{message.content}```"
+                )
+
+                # 🔒 Optionally delete the message:
+                # await message.delete()
+                break
+
+    await bot.process_commands(message)
 
 # 🧾 Manual audit command to list all current dev server members
 @bot.command(name="auditdev")
@@ -828,11 +824,7 @@ async def apply(ctx):
         await ctx.author.send("✅ Application submitted. You'll be contacted shortly.")
     except Exception:
         await ctx.send("❌ Failed to DM you. Please open your DMs.")
-@bot.event
-async def on_command_error(ctx, error):
-    if isinstance(error, commands.CommandNotFound):
-        return  # 🔇 Silently ignore unknown commands
-    raise error
+
 
 @bot.command()
 async def profit(ctx):
@@ -1088,10 +1080,14 @@ async def start_training(ctx):
 @bot.command(name="trainskip")
 async def skip_training(ctx):
     """Skip current training step if in session."""
-    if ctx.author.id not in user_training_session:
+    if ctx.author.id not in user_training_sessions:
         await ctx.send("❌ You're not in an active training session.")
         return
     await ctx.send("⏭️ Step will be skipped on your next message.")
+
+
+
+
 
 @bot.command(name="profile")
 async def rep_profile(ctx, user: discord.Member = None):
@@ -1287,6 +1283,24 @@ async def credit_check(ctx, user_id: str):
     except Exception as e:
         await ctx.send(f"❌ Error checking credit: {str(e)}")
 
+# Modify the on_message event to notify on ticket creation
+@bot.event
+async def on_message(message):
+    # Ignore messages from bots
+    if message.author.bot:
+        return
+
+    # Check if the message is in a ticket channel
+    if "ticket" in message.channel.name.lower():
+        # Check if the user has credit
+        user_id = str(message.author.id)
+        if user_id in credits and credits[user_id] > 0:
+            await message.channel.send(
+                f"🎉 {message.author.mention}, you have **${credits[user_id]:.2f}** credit available!"
+            )
+
+    # Process commands
+    await bot.process_commands(message)
 
 @bot.command()
 async def leaderboard(ctx):
@@ -1570,8 +1584,164 @@ MAX_CRASH_LOGS = 3
 ticket_stats = {}
 
 
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
 
- 
+    # Handle DM logging
+    if isinstance(message.channel, discord.DMChannel):
+        try:
+            # Log to file
+            with open('dm_logs.txt', 'a', encoding='utf-8') as f:
+                timestamp = message.created_at.strftime('%Y-%m-%d %H:%M:%S')
+                f.write(f"\n=== DM from {message.author} ({message.author.id}) at {timestamp} ===\n")
+                f.write(f"Content: {message.content}\n")
+                # Log attachments if any
+                if message.attachments:
+                    f.write("Attachments:\n")
+                    for attachment in message.attachments:
+                        f.write(f"- {attachment.url}\n")
+                f.write("=" * 50 + "\n")
+
+            # Forward DM to owner
+            owner = await bot.fetch_user(480028928329777163)  # Cash's ID
+            if owner:
+                embed = discord.Embed(
+                    title="📥 New DM Received",
+                    description=f"From: {message.author.mention} ({message.author.id})",
+                    color=discord.Color.blue(),
+                    timestamp=message.created_at
+                )
+                embed.add_field(name="Content", value=message.content, inline=False)
+                if message.attachments:
+                    embed.add_field(
+                        name="Attachments", 
+                        value="\n".join(f"[Attachment]({a.url})" for a in message.attachments),
+                        inline=False
+                    )
+                await owner.send(embed=embed)
+        except Exception as e:
+            logging.error(f"Failed to log DM: {str(e)}")
+
+    # Track checkticket commands
+    today = datetime.now().date()
+    if "!checkticket" in message.content.lower():
+        if today not in ticket_stats:
+            ticket_stats[today] = {"count": 0, "amounts": []}
+
+        # Extract amount from command
+        try:
+            amount = float(message.content.split()[1])
+            ticket_stats[today]["count"] += 1
+            ticket_stats[today]["amounts"].append(amount)
+        except (IndexError, ValueError):
+            pass
+
+    # Log messages for specified channel
+    if message.channel.id == 1103526122211262565:
+        today = datetime.now().date()
+        if today not in daily_messages:
+            daily_messages[today] = {}
+
+        author_id = str(message.author.id)
+        if author_id not in daily_messages[today]:
+            daily_messages[today][author_id] = {'count': 0, 'total': 0.0}
+
+        daily_messages[today][author_id]['count'] += 1
+
+        # Check for ticket mentions
+        content = message.content
+        ticket_match = re.search(r'Ticket:\s*(\S+)', content)
+        if ticket_match:
+            ticket_id = ticket_match.group(1)
+            # Check audit log for ticket closure
+            found_closure = False
+            five_minutes_ago = datetime.now() - timedelta(minutes=5)
+            try:
+                async for entry in message.guild.audit_logs(
+                        limit=50,
+                        action=discord.AuditLogAction.channel_delete,
+                        after=five_minutes_ago):
+                    if entry.target and isinstance(
+                            entry.target, discord.abc.GuildChannel
+                    ) and entry.target.name == f'ticket-{ticket_id}':
+                        found_closure = True
+                        break
+            except discord.Forbidden:
+                logging.error("Bot lacks audit log permissions")
+                pass
+
+            if not found_closure:
+                try:
+                    alert_channel = bot.get_channel(1223077287457587221)
+                    alert_embed = discord.Embed(
+                        title="🚨 Ticket Alert",
+                        description=
+                        f"Ticket mentioned but not found closed:\nTicket ID: {ticket_id}\nUser: {message.author.mention}",
+                        color=discord.Color.red(),
+                        timestamp=datetime.now())
+                    alert_embed.add_field(
+                        name="Message Link",
+                        value=f"[Click here]({message.jump_url})")
+                    if alert_channel:
+                        await alert_channel.send(embed=alert_embed)
+                except Exception as e:
+                    logging.error(f"Failed to send ticket alert: {e}")
+
+        content = content.lower()
+        import re
+
+        # Check if message follows expected format (Customer: something $amount)
+        is_valid_format = bool(
+            re.match(r'customer:.*?\$\d+(?:\.\d{2})?', content))
+        price_matches = re.findall(r'\$(\d+(?:\.\d{2})?)', content)
+
+        if price_matches and is_valid_format:
+            try:
+                price = float(price_matches[0])
+                daily_messages[today][author_id]['total'] += price
+
+                # Check audit log for ticket channel deletions in last 5 minutes
+                found_ticket = False
+                five_minutes_ago = datetime.now() - timedelta(minutes=5)
+                try:
+                    async for entry in message.guild.audit_logs(
+                            limit=50,
+                            action=discord.AuditLogAction.channel_delete,
+                            after=five_minutes_ago):
+                        if entry.target and isinstance(
+                                entry.target, discord.abc.GuildChannel
+                        ) and entry.target.name.startswith('ticket-'):
+                            found_ticket = True
+                            break
+                except discord.Forbidden:
+                    logging.error("Bot lacks audit log permissions")
+                    pass
+
+                if not found_ticket:
+                    # Send alert only to owner via DM
+                    try:
+                        alert_channel = bot.get_channel(1223077287457587221)
+                        alert_embed = discord.Embed(
+                            title="🚨 Review Required",
+                            description=
+                            f"Sale logged without matching ticket:\nUser: {message.author.mention}\nAmount: ${price}",
+                            color=discord.Color.red(),
+                            timestamp=datetime.now())
+                        alert_embed.add_field(
+                            name="Sale Message Link",
+                            value=f"[Click here]({message.jump_url})")
+                        if alert_channel:
+                            await alert_channel.send(embed=alert_embed)
+                    except Exception as e:
+                        logging.error(f"Failed to send review alert: {e}")
+
+            except ValueError:
+                pass
+
+    await bot.process_commands(message)
+
 
 @bot.command()
 async def topusers(ctx):
@@ -1630,70 +1800,6 @@ async def topusers(ctx):
             continue
 
     await ctx.send(embed=embed)
-
-from discord.ext import tasks
-import discord
-from discord.ext import commands
-
-# 🔁 Webhook Polling Loop
-@tasks.loop(seconds=10)
-async def poll_webhook_channel():
-    try:
-        channel = bot.get_channel(1361882298282283161)  # Webhook source channel
-        repost1 = bot.get_channel(1223077287457587221)  # Alert Channel 1
-        repost2 = bot.get_channel(1361847485961601134)  # Alert Channel 2
-
-        if not channel or not repost1 or not repost2:
-            print("❌ One or more repost channels not found.")
-            return
-
-        messages = [msg async for msg in channel.history(limit=1)]
-        if not messages:
-            print("⚠️ No messages found in webhook channel.")
-            return
-
-        last = messages[0]
-        if hasattr(bot, 'last_seen') and bot.last_seen == last.id:
-            return  # Already reposted this one
-
-        bot.last_seen = last.id  # Store the message ID to prevent reposting
-
-        # Handle both content and embed-only messages
-        content = last.content or (
-            last.embeds[0].description if last.embeds else "[No content]"
-        )
-
-        embed = discord.Embed(
-            title="🔁 Auto-Repost from PSRP",
-            description=content,
-            color=0x3498db
-        )
-
-        await repost1.send(embed=embed)
-        await repost2.send(embed=embed)
-        print(f"✅ Reposted message ID: {last.id}")
-
-    except Exception as e:
-        print(f"❌ Polling error: {e}")
-
-# 🚀 Start the loop when the bot is ready
-@bot.event
-async def on_ready():
-    print(f"✅ Logged in as {bot.user}")
-    poll_webhook_channel.start()
-
-# 📊 Repost Tracker Command
-@bot.command()
-@commands.is_owner()
-async def repoststatus(ctx):
-    """Check the last reposted webhook message ID."""
-    try:
-        if hasattr(bot, 'last_seen'):
-            await ctx.send(f"✅ Last reposted message ID: `{bot.last_seen}`")
-        else:
-            await ctx.send("⚠️ No webhook message has been reposted yet.")
-    except Exception as e:
-        await ctx.send(f"❌ Error checking repost status: {e}")
 
 
 @bot.command()
@@ -2611,7 +2717,26 @@ async def blacklist_command(ctx, action: str, user_id: str = None):
 def is_blacklisted(user_id):
     return user_id in blacklist
 
+# Event: Detect messages in ticket channels
+@bot.event
+async def on_message(message):
+    # Ignore messages from bots
+    if message.author.bot:
+        return
 
+    # Check if the channel name matches a ticket format (e.g., "vehicle-1234", "support-5678")
+    if re.match(r"^\w+-\d+$", message.channel.name):
+        # Check if the user is blacklisted
+        if is_blacklisted(str(message.author.id)):
+            # Notify the seller
+            seller_notification = (
+                f"🚨 **Blacklisted User Alert**: {message.author.mention} (ID: {message.author.id}) "
+                f"tried to buy something in {message.channel.mention}."
+            )
+            await message.channel.send(seller_notification)
+
+    # Process commands
+    await bot.process_commands(message)
 
 @bot.command(name='emaillog')
 async def checkticket_log(ctx, amount: float, unread_only: bool = True):
@@ -2670,15 +2795,6 @@ async def checkticket_log(ctx, amount: float, unread_only: bool = True):
     except Exception as e:
         await ctx.send("❌ An error occurred while fetching emails.")
         logging.error(f"Checkticket log error: {str(e)}")
-
-from discord.ext import tasks
-
-
-
-
-
-
-
 
 @bot.command(name='printroleids')
 async def print_role_ids(ctx):
@@ -3019,28 +3135,45 @@ async def version_check(ctx):
     
     await ctx.send(embed=embed)
 
-@bot.command()
+@bot.command(name="blacklistban")
 @commands.is_owner()
-async def blacklistban(ctx, user_id: int):
-    exempt_server_id = 913635757401448448  # PSRP Dev server to skip
-    success = []
-    failed = []
+async def blacklist_ban(ctx, user_id: int):
+    """Ban a user from all servers the bot is in."""
+    try:
+        user = await bot.fetch_user(user_id)
+        if not user:
+            await ctx.send("❌ Could not fetch that user.")
+            return
 
-    for guild in bot.guilds:
-        if guild.id == exempt_server_id:
-            continue  # ❌ Skip PSRP server
+        success = 0
+        failed = []
 
-        member = guild.get_member(user_id)
-        if member:
+        for guild in bot.guilds:
             try:
-                await guild.ban(member, reason="Globally blacklisted by bot owner")
-                success.append(guild.name)
-            except Exception as e:
-                print(f"Failed to ban {member} in {guild.name}: {e}")
+                await guild.ban(user, reason=f"Blacklisted by {ctx.author}", delete_message_days=0)
+                success += 1
+            except discord.Forbidden:
                 failed.append(guild.name)
+            except Exception as e:
+                failed.append(f"{guild.name} ({str(e)})")
 
-    result = f"✅ Banned from: {', '.join(success) or 'None'}\n❌ Failed in: {', '.join(failed) or 'None'}"
-    await ctx.send(result)
+        embed = discord.Embed(
+            title="🚫 Global Ban Executed",
+            color=discord.Color.red(),
+            description=f"User {user} (`{user.id}`) has been banned from {success} server(s)."
+        )
+
+        if failed:
+            embed.add_field(
+                name="❌ Failed Servers",
+                value="\n".join(failed),
+                inline=False
+            )
+
+        await ctx.send(embed=embed)
+
+    except Exception as e:
+        await ctx.send(f"❌ Error: {str(e)}")
 
 @bot.command(name='giftcardtotal')
 @commands.cooldown(1, 300, commands.BucketType.user)
@@ -3205,111 +3338,6 @@ async def on_member_join(member):
 
     except Exception as e:
         logging.error(f"Alt detector error: {str(e)}")
-last_reposted_ids = set()
-
-async def run_repost_check():
-    try:
-        source = bot.get_channel(1361882298282283161)
-        targets = [
-            bot.get_channel(1223077287457587221),
-            bot.get_channel(1361847485961601134)
-        ]
-
-        if not source or any(ch is None for ch in targets):
-            print("❌ One or more repost channels not found.")
-            return
-
-        messages = [msg async for msg in source.history(limit=5)]
-        posted = 0
-
-        for msg in reversed(messages):  # oldest first
-            if msg.id in last_reposted_ids:
-                continue
-
-            content = msg.content or (msg.embeds[0].description if msg.embeds else "[No content]")
-            embed = discord.Embed(title="🔁 Reposted from PSRP", description=content, color=0x3498db)
-
-            for ch in targets:
-                await ch.send(embed=embed)
-
-            last_reposted_ids.add(msg.id)
-            posted += 1
-
-        if posted:
-            print(f"✅ Reposted {posted} message(s).")
-        else:
-            print("⚠️ No new messages to repost.")
-
-    except Exception as e:
-        print(f"❌ Error in auto repost loop: {str(e)}")
-
-
-from discord.ext import tasks
-
-@tasks.loop(seconds=10)
-async def auto_testrepost():
-    await run_repost_check()
-
-@bot.event
-async def on_ready():
-    print(f"✅ Logged in as {bot.user}")
-    auto_testrepost.start()
-
-@bot.event
-async def on_message(message):
-    if message.author.bot:
-        return
-
-    # 1. PSRP webhook repost
-    if message.channel.id == 1361882298282283161 and message.webhook_id:
-        repost_channels = [
-            bot.get_channel(1223077287457587221),
-            bot.get_channel(1361847485961601134)
-        ]
-        content = message.content or "[No message content found]"
-        embed = discord.Embed(
-            title="🔑 PSRP Key Event",
-            description=content,
-            color=0x3498db
-        )
-        for ch in repost_channels:
-            if ch:
-                await ch.send(embed=embed)
-
-    # 2. Ticket credit reminder
-    if message.channel.name.lower().startswith("ticket"):
-        user_id = str(message.author.id)
-        if user_id in credits and credits[user_id] > 0:
-            await message.channel.send(
-                f"🎉 {message.author.mention}, you have **${credits[user_id]:.2f}** credit available!"
-            )
-
-    # 3. Blacklist check
-    if re.match(r"^\w+-\d+$", message.channel.name):
-        if is_blacklisted(str(message.author.id)):
-            await message.channel.send(
-                f"🚨 **Blacklisted User Alert**: {message.author.mention} (ID: {message.author.id}) "
-                f"tried to buy something in {message.channel.mention}."
-            )
-
-    # 4. Dev server flagged word check
-    if message.guild and message.guild.id == DEV_SERVER_ID:
-        lowered = message.content.lower()
-        for word in FLAGGED_WORDS:
-            if word in lowered:
-                log_channel = bot.get_channel(LOG_CHANNEL_ID)
-                if log_channel:
-                    await log_channel.send(
-                        f"🚨 **Flagged Message Detected**\n"
-                        f"User: {message.author.mention} (`{message.author.id}`)\n"
-                        f"Channel: {message.channel.mention}\n"
-                        f"Content: ```{message.content}```"
-                    )
-                break
-
-    # 5. Allow other commands to run
-    await bot.process_commands(message)
-
 
 
 @bot.command(name='audit')
@@ -3386,14 +3414,12 @@ async def on_command_error(ctx, error):
         severity="ERROR"
     )
     
-async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
-        return  # 🔇 Do nothing
+        await ctx.send("❌ Invalid command")
     elif isinstance(error, commands.MissingPermissions):
         await ctx.send("⛔ Insufficient permissions")
     else:
         await ctx.send(f"⚠️ Error: {str(error)}")
-
 
 
 
