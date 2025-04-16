@@ -826,113 +826,72 @@ async def apply(ctx):
         await ctx.send("❌ Failed to DM you. Please open your DMs.")
 
 
-# ===== REPOST CONFIGURATION =====
-SOURCE_CHANNEL_ID = 1361882298282283161  # PSRP webhook channel
-TARGET_CHANNEL_IDS = [1361847485961601134, 1223077287457587221]  # Alert channels
+import discord
+from discord.ext import commands, tasks
+import logging
+from datetime import datetime
 
-# ===== REPOST FUNCTIONALITY =====
-class RepostView(discord.ui.View):
-    """View for confirming/cancelling reposts"""
-    def __init__(self):
-        super().__init__(timeout=300)
-        
-    @discord.ui.button(label="✅ Confirm", style=discord.ButtonStyle.green)
-    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id not in OWNER_IDS:
-            await interaction.response.send_message("❌ Owner only", ephemeral=True)
-            return
-        await interaction.response.send_message("Reposted successfully!")
-        self.stop()
+# ===== CONFIGURATION =====
+SOURCE_CHANNEL_ID = 1361882298282283161  # Channel to monitor for messages
+TARGET_CHANNEL_IDS = [1361847485961601134, 1223077287457587221]  # Channels to repost to
 
-    @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.red)
-    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("Cancelled repost")
-        self.stop()
-
-async def create_repost_embed(message: discord.Message) -> discord.Embed:
-    """Create standardized embed for reposted messages"""
+# ===== REPOST FUNCTION =====
+async def auto_repost_message(message: discord.Message):
+    """Automatically repost messages to target channels"""
     embed = discord.Embed(
         title="🔁 PSRP Notification",
-        description=message.content or "*[No text content]*",
+        description=message.content or "*[No content]*",
         color=0x3498db,
         timestamp=message.created_at
     )
+    
     if message.author:
         embed.set_footer(
             text=f"Via {message.author.display_name}",
             icon_url=message.author.display_avatar.url
         )
+    
     if message.attachments:
         embed.set_image(url=message.attachments[0].url)
-    return embed
-
-async def safe_repost(message: discord.Message) -> bool:
-    """Safely repost message to all target channels"""
-    success = True
-    embed = await create_repost_embed(message)
     
     for channel_id in TARGET_CHANNEL_IDS:
-        channel = bot.get_channel(channel_id)
-        if not channel:
-            logging.warning(f"Target channel {channel_id} not found")
-            continue
-            
         try:
-            await channel.send(embed=embed)
-        except discord.Forbidden:
-            logging.error(f"Missing permissions in {channel.name}")
-            success = False
+            channel = bot.get_channel(channel_id)
+            if channel:
+                await channel.send(embed=embed)
         except Exception as e:
-            logging.error(f"Failed to repost to {channel.name}: {str(e)}")
-            success = False
-            
-    return success
+            logging.error(f"Failed to repost to channel {channel_id}: {str(e)}")
 
-@tasks.loop(seconds=15)
-async def monitor_psrp_webhooks():
-    """Background task to monitor and repost PSRP messages"""
+# ===== BACKGROUND TASK =====
+@tasks.loop(seconds=10)
+async def monitor_and_repost():
+    """Monitor source channel and auto-repost new messages"""
     try:
         channel = bot.get_channel(SOURCE_CHANNEL_ID)
         if not channel:
             return
-
-        # Track last message to avoid duplicates
-        last_id = getattr(bot, 'last_psrp_id', 0)
+            
+        # Get last message ID we processed
+        last_id = getattr(bot, 'last_reposted_id', 0)
         
+        # Check recent messages (newest first)
         async for message in channel.history(limit=10):
-            if message.id > last_id and message.webhook_id:
-                if await safe_repost(message):
-                    bot.last_psrp_id = message.id
-                    
+            if message.id > last_id and message.webhook_id:  # Only repost webhook messages
+                await auto_repost_message(message)
+                bot.last_reposted_id = message.id
+                
     except Exception as e:
-        logging.error(f"Webhook monitor error: {str(e)}")
+        logging.error(f"Auto-repost error: {str(e)}")
 
-# ===== INTEGRATION =====
+# ===== START TASK WHEN BOT STARTS =====
 @bot.event
 async def on_ready():
-    """Initialize repost system when bot starts"""
-    if not hasattr(bot, 'last_psrp_id'):
-        bot.last_psrp_id = 0
-    monitor_psrp_webhooks.start()
-
-@bot.command()
-@commands.is_owner()
-async def forcerepost(ctx, message_id: int):
-    """Manually repost a specific message"""
-    channel = bot.get_channel(SOURCE_CHANNEL_ID)
-    try:
-        message = await channel.fetch_message(message_id)
-        view = RepostView()
-        view.message = await ctx.send(
-            f"Repost this message to {len(TARGET_CHANNEL_IDS)} channels?",
-            embed=await create_repost_embed(message),
-            view=view
-        )
-        await view.wait()
-        if view.confirm:
-            await safe_repost(message)
-    except Exception as e:
-        await ctx.send(f"❌ Error: {str(e)}")
+    """Initialize the auto-repost system"""
+    if not hasattr(bot, 'last_reposted_id'):
+        bot.last_reposted_id = 0  # Initialize if doesn't exist
+        
+    monitor_and_repost.start()
+    logging.info("Auto-repost system started")
 
 
 @bot.command()
