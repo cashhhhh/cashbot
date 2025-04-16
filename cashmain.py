@@ -1572,7 +1572,7 @@ ticket_stats = {}
 
 
     # Handle DM logging
-    if isinstance(message.channel, discord.DMChannel):
+      if isinstance(message.channel, discord.DMChannel):
         try:
             # Log to file
             with open('dm_logs.txt', 'a', encoding='utf-8') as f:
