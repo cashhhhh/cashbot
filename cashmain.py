@@ -143,6 +143,11 @@ async def evaluate_application(message):
         embed.add_field(name="Reasons", value="\n".join(reasons), inline=False)
 
     return embed
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandNotFound):
+        return  # 👈 Silently ignore unknown commands
+    raise error  # Let other errors still show up
 
 
 def get_emails_imap(guild_id, unread_only=True):
