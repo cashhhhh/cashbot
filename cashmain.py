@@ -790,7 +790,11 @@ async def apply(ctx):
         await ctx.author.send("✅ Application submitted. You'll be contacted shortly.")
     except Exception:
         await ctx.send("❌ Failed to DM you. Please open your DMs.")
-
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandNotFound):
+        return  # 🔇 Silently ignore unknown commands
+    raise error
 
 @bot.command()
 async def profit(ctx):
