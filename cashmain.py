@@ -74,14 +74,7 @@ logging.basicConfig(level=logging.INFO)
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
-@bot.event
-async def on_command_error(ctx, error):
-    if isinstance(error, commands.CommandNotFound):
-        return  # 👈 Silently ignore unknown commands
-    raise error  # Let other errors still raise normally
-# Discord Bot Setup
-intents = discord.Intents.all()  # Enable all intents to ensure DM functionality
-bot = commands.Bot(command_prefix='!', intents=intents, self_bot=False)
+
 
 # Global Variables
 wrong_attempts = {}
@@ -272,7 +265,14 @@ async def on_message(message):
     await bot.process_commands(message)
 
 
-
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandNotFound):
+        return  # 👈 Silently ignore unknown commands
+    raise error  # Let other errors still raise normally
+# Discord Bot Setup
+intents = discord.Intents.all()  # Enable all intents to ensure DM functionality
+bot = commands.Bot(command_prefix='!', intents=intents, self_bot=False)
 
 @bot.command(name='checkticket')
 async def checkticket(ctx, amount: float, unread_only: bool = True):
