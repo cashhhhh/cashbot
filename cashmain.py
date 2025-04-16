@@ -825,16 +825,16 @@ async def apply(ctx):
     except Exception:
         await ctx.send("❌ Failed to DM you. Please open your DMs.")
 
-
 import discord
-from discord import Webhook, AsyncWebhookAdapter
+from discord import Webhook
 import aiohttp
 import logging
 from datetime import datetime
+from discord.ext import commands, tasks
 
 # ===== CONFIGURATION =====
 WEBHOOK_URL = "https://discord.com/api/webhooks/1361882315063824445/Zc1NDw5pQgstXZgBJe2-7kpEvj9t1RTewoaYZJc9AS0aggFVwybkbrR4uBOZW9zEd_qp"
-TARGET_CHANNEL_IDS = [1361847485961601134, 1223077287457587221]  # Channels to repost to
+TARGET_CHANNEL_IDS = [1361847485961601134, 1223077287457587221]
 PSRP_KEYWORDS = ["PSRP KEYS", "rocano has given", "has made", "has given", "has given trust"]
 
 # Global tracking
@@ -842,16 +842,17 @@ last_reposted_id = 0
 
 async def is_psrp_message(message):
     """Check if message should be reposted"""
-    return any(keyword in message.content for keyword in PSRP_KEYWORDS)
+    content = getattr(message, 'content', '')
+    return any(keyword in content for keyword in PSRP_KEYWORDS)
 
 async def create_psrp_embed(message):
     """Create embed for PSRP messages"""
     embed = discord.Embed(
-        description=message.content,
+        description=getattr(message, 'content', ''),
         color=0x00ff00,
         timestamp=datetime.utcnow()
     )
-    if hasattr(message, 'author') and message.author:
+    if hasattr(message, 'author'):
         embed.set_author(
             name=getattr(message.author, 'name', 'PSRP'),
             icon_url=getattr(message.author, 'avatar_url', '')
@@ -877,10 +878,10 @@ async def monitor_webhook():
     
     try:
         async with aiohttp.ClientSession() as session:
-            webhook = Webhook.from_url(WEBHOOK_URL, adapter=AsyncWebhookAdapter(session))
+            webhook = Webhook.from_url(WEBHOOK_URL, session=session)
             messages = await webhook.fetch(limit=10)
             
-            for message in reversed(messages):  # Process oldest first
+            for message in reversed(messages):
                 if message.id > last_reposted_id and await is_psrp_message(message):
                     await repost_to_channels(message)
                     last_reposted_id = message.id
@@ -891,23 +892,17 @@ async def monitor_webhook():
 @bot.command()
 @commands.is_owner()
 async def forcerepost(ctx, message_id: int = None):
-    """Manually repost a PSRP message (!forcerepost or !forcerepost <message_id>)"""
+    """Manually repost a PSRP message"""
     try:
         async with aiohttp.ClientSession() as session:
-            webhook = Webhook.from_url(WEBHOOK_URL, adapter=AsyncWebhookAdapter(session))
+            webhook = Webhook.from_url(WEBHOOK_URL, session=session)
             
             if message_id:
-                # Fetch specific message
-                try:
-                    message = await webhook.fetch_message(message_id)
-                    if not await is_psrp_message(message):
-                        await ctx.send("❌ Not a PSRP message")
-                        return
-                except Exception:
-                    await ctx.send("❌ Message not found")
+                message = await webhook.fetch_message(message_id)
+                if not await is_psrp_message(message):
+                    await ctx.send("❌ Not a PSRP message")
                     return
             else:
-                # Find most recent PSRP message
                 messages = await webhook.fetch(limit=20)
                 for message in messages:
                     if await is_psrp_message(message):
@@ -919,6 +914,8 @@ async def forcerepost(ctx, message_id: int = None):
             await repost_to_channels(message)
             await ctx.send(f"✅ Reposted message {message.id}")
             
+    except discord.NotFound:
+        await ctx.send("❌ Message not found")
     except Exception as e:
         await ctx.send(f"❌ Error: {str(e)}")
         logging.error(f"Force repost error: {e}")
@@ -926,10 +923,9 @@ async def forcerepost(ctx, message_id: int = None):
 @bot.event
 async def on_ready():
     """Initialize when bot starts"""
-    # Initialize with most recent message ID
     try:
         async with aiohttp.ClientSession() as session:
-            webhook = Webhook.from_url(WEBHOOK_URL, adapter=AsyncWebhookAdapter(session))
+            webhook = Webhook.from_url(WEBHOOK_URL, session=session)
             messages = await webhook.fetch(limit=1)
             if messages:
                 global last_reposted_id
@@ -939,6 +935,15 @@ async def on_ready():
     
     monitor_webhook.start()
     logging.info("PSRP webhook monitoring started")
+
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandNotFound):
+        await ctx.send("❌ Invalid command")
+    elif isinstance(error, commands.MissingPermissions):
+        await ctx.send("⛔ You don't have permission")
+    else:
+        logging.error(f"Command error: {error}")
 
 @bot.event
 async def on_command_error(ctx, error):
