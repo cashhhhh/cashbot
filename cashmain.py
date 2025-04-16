@@ -3166,45 +3166,28 @@ async def version_check(ctx):
     
     await ctx.send(embed=embed)
 
-@bot.command(name="blacklistban")
+@bot.command()
 @commands.is_owner()
-async def blacklist_ban(ctx, user_id: int):
-    """Ban a user from all servers the bot is in."""
-    try:
-        user = await bot.fetch_user(user_id)
-        if not user:
-            await ctx.send("❌ Could not fetch that user.")
-            return
+async def blacklistban(ctx, user_id: int):
+    exempt_server_id = 913635757401448448  # PSRP Dev server to skip
+    success = []
+    failed = []
 
-        success = 0
-        failed = []
+    for guild in bot.guilds:
+        if guild.id == exempt_server_id:
+            continue  # ❌ Skip PSRP server
 
-        for guild in bot.guilds:
+        member = guild.get_member(user_id)
+        if member:
             try:
-                await guild.ban(user, reason=f"Blacklisted by {ctx.author}", delete_message_days=0)
-                success += 1
-            except discord.Forbidden:
-                failed.append(guild.name)
+                await guild.ban(member, reason="Globally blacklisted by bot owner")
+                success.append(guild.name)
             except Exception as e:
-                failed.append(f"{guild.name} ({str(e)})")
+                print(f"Failed to ban {member} in {guild.name}: {e}")
+                failed.append(guild.name)
 
-        embed = discord.Embed(
-            title="🚫 Global Ban Executed",
-            color=discord.Color.red(),
-            description=f"User {user} (`{user.id}`) has been banned from {success} server(s)."
-        )
-
-        if failed:
-            embed.add_field(
-                name="❌ Failed Servers",
-                value="\n".join(failed),
-                inline=False
-            )
-
-        await ctx.send(embed=embed)
-
-    except Exception as e:
-        await ctx.send(f"❌ Error: {str(e)}")
+    result = f"✅ Banned from: {', '.join(success) or 'None'}\n❌ Failed in: {', '.join(failed) or 'None'}"
+    await ctx.send(result)
 
 @bot.command(name='giftcardtotal')
 @commands.cooldown(1, 300, commands.BucketType.user)
