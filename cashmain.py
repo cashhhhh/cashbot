@@ -634,10 +634,7 @@ async def on_command_error(ctx, error):
     else:
         await ctx.send(f"⚠️ Error: {str(error)}")
 
-@bot.event
-async def on_message_delete(message):
-    if message.author.bot:
-        return
+
 
     if message.mentions:
         content = message.content or "*[no text]*"
@@ -682,30 +679,7 @@ async def on_member_remove(member):
         log_channel = bot.get_channel(LOG_CHANNEL_ID)
         await log_channel.send(f"❌ `{member}` left or was removed from the dev server. ID: `{member.id}`")
 
-# 👁️ Monitors chat in the dev server
-@bot.event
-async def on_message(message):
-    if message.guild and message.guild.id == DEV_SERVER_ID:
-        if message.author.bot:
-            return
 
-        lowered = message.content.lower()
-
-        for word in FLAGGED_WORDS:
-            if word in lowered:
-                log_channel = bot.get_channel(LOG_CHANNEL_ID)
-                await log_channel.send(
-                    f"🚨 **Flagged Message Detected in Dev Server**\n"
-                    f"User: {message.author.mention} (`{message.author.id}`)\n"
-                    f"Channel: {message.channel.mention}\n"
-                    f"Content: ```{message.content}```"
-                )
-
-                # 🔒 Optionally delete the message:
-                # await message.delete()
-                break
-
-    await bot.process_commands(message)
 
 # 🧾 Manual audit command to list all current dev server members
 @bot.command(name="auditdev")
@@ -1114,75 +1088,10 @@ async def start_training(ctx):
 @bot.command(name="trainskip")
 async def skip_training(ctx):
     """Skip current training step if in session."""
-    if ctx.author.id not in user_training_sessions:
+    if ctx.author.id not in user_training_sessio
         await ctx.send("❌ You're not in an active training session.")
         return
     await ctx.send("⏭️ Step will be skipped on your next message.")
-
-@bot.event
-async def on_message(message):
-    if message.channel.id == 1361882298282283161:
-        print("📨 Message received in PSRP webhook channel.")
-        print(f"Author: {message.author} | Webhook ID: {message.webhook_id}")
-        print(f"Content: {message.content}")
-
-        if message.webhook_id:
-            target_channel = bot.get_channel(1223077287457587221)
-            if target_channel:
-                await target_channel.send(f"Forwarded webhook message:\n{message.content}")
-            else:
-                print("❌ Target channel not found.")
-    
-    await bot.process_commands(message)
-
-
-# ✅ Final Full Add-On Code — Post to Alert Channel When Webhook Posts in PSRP
-
-@bot.event
-async def on_message(message):
-    # Watch only the PSRP webhook channel
-    if message.channel.id == 1361882298282283161 and message.webhook_id:
-        target_channel = bot.get_channel(1223077287457587221)  # Your private log/alert channel
-
-        if target_channel:
-            try:
-                content = message.content or "[No message content found]"
-                embed = discord.Embed(
-                    title="🔑 PSRP Key Event",
-                    description=content,
-                    color=0x3498db
-                )
-                await target_channel.send(embed=embed)
-            except Exception as e:
-                print(f"❌ Failed to post webhook alert: {e}")
-        else:
-            print("❌ Target repost channel not found.")
-
-    # Required for commands to work
-    await bot.process_commands(message)
-
-
-# ✅ Clean global error handler — suppress unknown command spam
-@bot.event
-async def on_command_error(ctx, error):
-    if isinstance(error, commands.CommandNotFound):
-        return  # 🔇 Silently ignore unknown commands
-    elif isinstance(error, commands.MissingPermissions):
-        await ctx.send("⛔ Insufficient permissions")
-    else:
-        await ctx.send(f"⚠️ Error: {str(error)}")
-
-
-
-# ✅ Clean global error handler — suppress unknown command spam
-@bot.event
-async def on_command_error(ctx, error):
-    if isinstance(error, commands.CommandNotFound):
-        return  # 🔇 Silently ignore unknown commands
-    elif isinstance(error, commands.MissingPermissions):
-        await ctx.send("⛔ Insufficient permissions")
-    else:
-        await ctx.send(f"⚠️ Error: {str(error)}")
 
 @bot.command(name="profile")
 async def rep_profile(ctx, user: discord.Member = None):
@@ -1378,24 +1287,6 @@ async def credit_check(ctx, user_id: str):
     except Exception as e:
         await ctx.send(f"❌ Error checking credit: {str(e)}")
 
-# Modify the on_message event to notify on ticket creation
-@bot.event
-async def on_message(message):
-    # Ignore messages from bots
-    if message.author.bot:
-        return
-
-    # Check if the message is in a ticket channel
-    if "ticket" in message.channel.name.lower():
-        # Check if the user has credit
-        user_id = str(message.author.id)
-        if user_id in credits and credits[user_id] > 0:
-            await message.channel.send(
-                f"🎉 {message.author.mention}, you have **${credits[user_id]:.2f}** credit available!"
-            )
-
-    # Process commands
-    await bot.process_commands(message)
 
 @bot.command()
 async def leaderboard(ctx):
@@ -1679,10 +1570,6 @@ MAX_CRASH_LOGS = 3
 ticket_stats = {}
 
 
-@bot.event
-async def on_message(message):
-    if message.author.bot:
-        return
 
     # Handle DM logging
     if isinstance(message.channel, discord.DMChannel):
@@ -2812,26 +2699,7 @@ async def blacklist_command(ctx, action: str, user_id: str = None):
 def is_blacklisted(user_id):
     return user_id in blacklist
 
-# Event: Detect messages in ticket channels
-@bot.event
-async def on_message(message):
-    # Ignore messages from bots
-    if message.author.bot:
-        return
 
-    # Check if the channel name matches a ticket format (e.g., "vehicle-1234", "support-5678")
-    if re.match(r"^\w+-\d+$", message.channel.name):
-        # Check if the user is blacklisted
-        if is_blacklisted(str(message.author.id)):
-            # Notify the seller
-            seller_notification = (
-                f"🚨 **Blacklisted User Alert**: {message.author.mention} (ID: {message.author.id}) "
-                f"tried to buy something in {message.channel.mention}."
-            )
-            await message.channel.send(seller_notification)
-
-    # Process commands
-    await bot.process_commands(message)
 
 @bot.command(name='emaillog')
 async def checkticket_log(ctx, amount: float, unread_only: bool = True):
@@ -3462,6 +3330,71 @@ async def testrepost(ctx):
     except Exception as e:
         print(f"Error in !testrepost: {e}")
         await ctx.send(f"❌ Error: {e}")
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    # ✅ 1. Repost PSRP Webhook
+    if message.channel.id == 1361882298282283161 and message.webhook_id:
+        repost_channels = [
+            bot.get_channel(1223077287457587221),
+            bot.get_channel(1361847485961601134)
+        ]
+        content = message.content or "[No message content found]"
+        embed = discord.Embed(
+            title="🔑 PSRP Key Event",
+            description=content,
+            color=0x3498db
+        )
+        for ch in repost_channels:
+            if ch:
+                await ch.send(embed=embed)
+
+    # ✅ 2. Ticket Credit Reminder
+    if message.channel.name.lower().startswith("ticket"):
+        user_id = str(message.author.id)
+        if user_id in credits and credits[user_id] > 0:
+            await message.channel.send(
+                f"🎉 {message.author.mention}, you have **${credits[user_id]:.2f}** credit available!"
+            )
+
+    # ✅ 3. Blacklisted Buyer Detection in Ticket Channels (e.g. vehicle-1234)
+    if re.match(r"^\w+-\d+$", message.channel.name):
+        if is_blacklisted(str(message.author.id)):
+            await message.channel.send(
+                f"🚨 **Blacklisted User Alert**: {message.author.mention} (ID: {message.author.id}) "
+                f"tried to buy something in {message.channel.mention}."
+            )
+
+    # ✅ 4. Dev Server Flagged Word Monitoring
+    if message.guild and message.guild.id == DEV_SERVER_ID:
+        lowered = message.content.lower()
+        for word in FLAGGED_WORDS:
+            if word in lowered:
+                log_channel = bot.get_channel(LOG_CHANNEL_ID)
+                if log_channel:
+                    await log_channel.send(
+                        f"🚨 **Flagged Message Detected**\n"
+                        f"User: {message.author.mention} (`{message.author.id}`)\n"
+                        f"Channel: {message.channel.mention}\n"
+                        f"Content: ```{message.content}```"
+                    )
+                break
+
+    # ✅ 5. DM Logging to Bot Owner
+    if isinstance(message.channel, discord.DMChannel):
+        owner = await bot.fetch_user(480028928329777163)
+        if owner:
+            embed = discord.Embed(
+                title="📥 New DM Received",
+                description=f"From: {message.author} ({message.author.id})\nContent: {message.content}",
+                color=discord.Color.blue()
+            )
+            await owner.send(embed=embed)
+
+    # ✅ Allow commands to function
+    await bot.process_commands(message)
 
 
 @bot.command(name='audit')
