@@ -263,48 +263,7 @@ REPOST_TARGET_CHANNEL_ID = 1223077287457587221
 # ✅ Reposting Webhook Messages by Polling Instead of Relying on on_message
 from discord.ext import tasks
 
-@tasks.loop(seconds=10)  # Poll every 10 seconds
-async def poll_psrp_webhook():
-    try:
-        psrp_channel = bot.get_channel(1361882298282283161)
-        alert_channel = bot.get_channel(1361847485961601134)
 
-        if not psrp_channel or not alert_channel:
-            print("❌ PSRP or alert channel not found.")
-            return
-
-        messages = [msg async for msg in psrp_channel.history(limit=1)]
-        if not messages:
-            return
-
-        last_msg = messages[0]
-        if hasattr(bot, 'last_seen_msg_id') and bot.last_seen_msg_id == last_msg.id:
-            return  # Already processed this message
-
-        bot.last_seen_msg_id = last_msg.id
-
-        if last_msg.content:
-            content = last_msg.content
-        elif last_msg.embeds:
-            content = last_msg.embeds[0].description or str(last_msg.embeds[0].to_dict())
-        else:
-            content = "[No content found]"
-
-        embed = discord.Embed(
-            title="🔁 Auto-Repost from PSRP",
-            description=content,
-            color=0x3498db
-        )
-        await alert_channel.send(embed=embed)
-
-    except Exception as e:
-        print(f"❌ Error in webhook polling: {e}")
-
-# ✅ Start the polling task when the bot is ready
-@bot.event
-async def on_ready():
-    print(f"✅ Logged in as {bot.user}")
-    poll_psrp_webhook.start()
 
 
 # ✅ Error Handler
@@ -606,7 +565,48 @@ async def on_guild_channel_create(channel):
         owner_mention = " ".join(f"<@{oid}>" for oid in COMMISSION_CONFIG['owner_ids'])
         await channel.send(f"{owner_mention} New commission claim started")
 
+@tasks.loop(seconds=10)  # Poll every 10 seconds
+async def poll_psrp_webhook():
+    try:
+        psrp_channel = bot.get_channel(1361882298282283161)
+        alert_channel = bot.get_channel(1361847485961601134)
 
+        if not psrp_channel or not alert_channel:
+            print("❌ PSRP or alert channel not found.")
+            return
+
+        messages = [msg async for msg in psrp_channel.history(limit=1)]
+        if not messages:
+            return
+
+        last_msg = messages[0]
+        if hasattr(bot, 'last_seen_msg_id') and bot.last_seen_msg_id == last_msg.id:
+            return  # Already processed this message
+
+        bot.last_seen_msg_id = last_msg.id
+
+        if last_msg.content:
+            content = last_msg.content
+        elif last_msg.embeds:
+            content = last_msg.embeds[0].description or str(last_msg.embeds[0].to_dict())
+        else:
+            content = "[No content found]"
+
+        embed = discord.Embed(
+            title="🔁 Auto-Repost from PSRP",
+            description=content,
+            color=0x3498db
+        )
+        await alert_channel.send(embed=embed)
+
+    except Exception as e:
+        print(f"❌ Error in webhook polling: {e}")
+
+# ✅ Start the polling task when the bot is ready
+@bot.event
+async def on_ready():
+    print(f"✅ Logged in as {bot.user}")
+    poll_psrp_webhook.start()
 
 @bot.event
 async def on_message_delete(message):
