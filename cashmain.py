@@ -248,20 +248,6 @@ ALERT_USER_IDS = [480028928329777163,
                   230803708034678786]  # Users to notify on spike
 
 
-# ✅ Bot-Based Reposting of PSRP Webhook Messages (No Webhook Needed)
-import discord
-from discord.ext import commands
-
-# Discord Bot Setup (if not already defined)
-intents = discord.Intents.all()
-bot = commands.Bot(command_prefix='!', intents=intents)
-
-# Channel IDs
-PSRP_WEBHOOK_CHANNEL_ID = 1361882298282283161
-REPOST_TARGET_CHANNEL_ID = 1223077287457587221
-
-# ✅ Reposting Webhook Messages by Polling Instead of Relying on on_message
-from discord.ext import tasks
 
 
 
@@ -565,12 +551,14 @@ async def on_guild_channel_create(channel):
         owner_mention = " ".join(f"<@{oid}>" for oid in COMMISSION_CONFIG['owner_ids'])
         await channel.send(f"{owner_mention} New commission claim started")
 
-# ✅ Reposting Webhook Messages by Polling Instead of Relying on on_message
+# ✅ Reposting Webhook Messages by Polling with Debug Output
 from discord.ext import tasks
 
 @tasks.loop(seconds=10)  # Poll every 10 seconds
 async def poll_psrp_webhook():
     try:
+        print("🔄 polling PSRP channel...")
+
         psrp_channel = bot.get_channel(1361882298282283161)
         alert_channel_1 = bot.get_channel(1361847485961601134)
         alert_channel_2 = bot.get_channel(1223077287457587221)
@@ -581,11 +569,15 @@ async def poll_psrp_webhook():
 
         messages = [msg async for msg in psrp_channel.history(limit=1)]
         if not messages:
+            print("⚠️ No messages found in PSRP channel.")
             return
 
         last_msg = messages[0]
+        print(f"📨 Last message ID: {last_msg.id}, Author: {last_msg.author}")
+
         if hasattr(bot, 'last_seen_msg_id') and bot.last_seen_msg_id == last_msg.id:
-            return  # Already processed this message
+            print("✅ Already processed this message.")
+            return
 
         bot.last_seen_msg_id = last_msg.id
 
@@ -603,6 +595,7 @@ async def poll_psrp_webhook():
         )
         await alert_channel_1.send(embed=embed)
         await alert_channel_2.send(embed=embed)
+        print("✅ Reposted message to both alert channels.")
 
     except Exception as e:
         print(f"❌ Error in webhook polling: {e}")
@@ -613,6 +606,17 @@ async def on_ready():
     print(f"✅ Logged in as {bot.user}")
     print("📡 Starting PSRP webhook polling loop...")
     poll_psrp_webhook.start()
+
+
+# ✅ Error Handler
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandNotFound):
+        return
+    elif isinstance(error, commands.MissingPermissions):
+        await ctx.send("⛔ Insufficient permissions")
+    else:
+        await ctx.send(f"⚠️ Error: {str(error)}")
 
 
 # ✅ Error Handler
