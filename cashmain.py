@@ -1,4 +1,4 @@
-
+F
 
 import re
 import os
@@ -259,7 +259,6 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 # Channel IDs
 PSRP_WEBHOOK_CHANNEL_ID = 1361882298282283161
 REPOST_TARGET_CHANNEL_ID = 1223077287457587221
-
 
 @bot.event
 async def on_message(message):
