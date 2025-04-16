@@ -74,6 +74,11 @@ logging.basicConfig(level=logging.INFO)
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandNotFound):
+        return  # 👈 Silently ignore unknown commands
+    raise error  # Let other errors still raise normally
 # Discord Bot Setup
 intents = discord.Intents.all()  # Enable all intents to ensure DM functionality
 bot = commands.Bot(command_prefix='!', intents=intents, self_bot=False)
@@ -89,11 +94,6 @@ giftcard_codes = {
 }
 
 
-async def evaluate_application(message):
-    """Evaluate a sales application message based on criteria."""
-    # Only evaluate for specific user
-    if str(message.author.id) != "557628352828014614":
-        return None
 
     # Remove mentions from content
     content = ' '.join(word for word in message.content.split()
