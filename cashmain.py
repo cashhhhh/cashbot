@@ -1057,7 +1057,35 @@ async def skip_training(ctx):
 
 
 
+@bot.event
+async def on_message(message):
+    # Watch only the PSRP webhook channel
+    if message.channel.id == 1361882298282283161 and message.webhook_id:
+        target_channel = bot.get_channel(1223077287457587221)  # Your private log/alert channel
 
+        if target_channel:
+            embed = discord.Embed(
+                title="🔑 PSRP Key Event",
+                description=message.content,
+                color=0x3498db
+            )
+            await target_channel.send(embed=embed)
+        else:
+            print("❌ Target repost channel not found.")
+
+    # Required for commands to work
+    await bot.process_commands(message)
+
+
+# ✅ Clean global error handler — suppress unknown command spam
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandNotFound):
+        return  # 🔇 Silently ignore unknown commands
+    elif isinstance(error, commands.MissingPermissions):
+        await ctx.send("⛔ Insufficient permissions")
+    else:
+        await ctx.send(f"⚠️ Error: {str(error)}")
 
 @bot.command(name="profile")
 async def rep_profile(ctx, user: discord.Member = None):
