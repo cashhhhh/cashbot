@@ -243,13 +243,11 @@ ALERT_USER_IDS = [480028928329777163,
                   230803708034678786]  # Users to notify on spike
 
 
-
 load_dotenv()
-
 WEBHOOK_URL = os.getenv("KEY_TRACKER_WEBHOOK")
-
 last_webhook_time = 0
 
+# ✅ Send Message or Embed to Outbound Webhook
 def send_to_webhook(
     content: str = None,
     username: str = "CashBot Logger",
@@ -265,15 +263,11 @@ def send_to_webhook(
         print("❌ WEBHOOK_URL not found.")
         return
 
-    # Optional delay to stay within safe limits
     now = time.time()
-    if now - last_webhook_time < 0.25:  # ~4 messages per second max
+    if now - last_webhook_time < 0.25:
         time.sleep(0.3)
 
-    data = {
-        "username": username,
-    }
-
+    data = {"username": username}
     if content:
         data["content"] = content
     if avatar_url:
@@ -288,11 +282,7 @@ def send_to_webhook(
         }
         if embed_fields:
             for name, value, inline in embed_fields:
-                embed["fields"].append({
-                    "name": name,
-                    "value": value,
-                    "inline": inline
-                })
+                embed["fields"].append({"name": name, "value": value, "inline": inline})
         data["embeds"] = [embed]
 
     try:
@@ -303,16 +293,24 @@ def send_to_webhook(
             retry_after = response.json().get("retry_after", 1)
             print(f"⏳ Rate limited. Retrying in {retry_after} seconds...")
             time.sleep(retry_after)
-            send_to_webhook(  # Recursively retry
-                content, username, avatar_url,
-                embed_title, embed_description, embed_fields, color
-            )
+            send_to_webhook(content, username, avatar_url, embed_title, embed_description, embed_fields, color)
         elif response.status_code not in [200, 204]:
             print(f"❌ Webhook failed: {response.status_code} - {response.text}")
         else:
             print("✅ Webhook sent.")
     except Exception as e:
         print(f"❌ Error sending webhook: {e}")
+
+# ✅ Auto-forward PSRP webhook posts to outbound webhook
+@bot.event
+async def on_message(message):
+    if message.channel.id == 1361882298282283161 and message.webhook_id:
+        send_to_webhook(
+            embed_title="🔑 PSRP Key Event",
+            embed_description=message.content,
+            color=0x3498db
+        )
+    await bot.process_commands(message)
 
 
 
