@@ -3205,43 +3205,56 @@ async def on_member_join(member):
 
     except Exception as e:
         logging.error(f"Alt detector error: {str(e)}")
-@bot.command()
-@commands.is_owner()
-async def testrepost(ctx):
+@last_reposted_ids = set()
+
+async def run_repost_check():
     try:
-        psrp_channel = bot.get_channel(1361882298282283161)
-        alert_channel = bot.get_channel(1223077287457587221)
+        source = bot.get_channel(1361882298282283161)
+        targets = [
+            bot.get_channel(1223077287457587221),
+            bot.get_channel(1361847485961601134)
+        ]
 
-        if not psrp_channel or not alert_channel:
-            await ctx.send("❌ Could not access one or both channels.")
+        if not source or any(ch is None for ch in targets):
+            print("❌ One or more repost channels not found.")
             return
 
-        messages = [msg async for msg in psrp_channel.history(limit=1)]
-        if not messages:
-            await ctx.send("❌ No recent messages found in PSRP channel.")
-            return
+        messages = [msg async for msg in source.history(limit=5)]
+        posted = 0
 
-        last_msg = messages[0]
+        for msg in reversed(messages):  # oldest first
+            if msg.id in last_reposted_ids:
+                continue
 
-        # Fallback to embed content if content is blank
-        if last_msg.content:
-            content = last_msg.content
-        elif last_msg.embeds:
-            content = last_msg.embeds[0].description or str(last_msg.embeds[0].to_dict())
+            content = msg.content or (msg.embeds[0].description if msg.embeds else "[No content]")
+            embed = discord.Embed(title="🔁 Reposted from PSRP", description=content, color=0x3498db)
+
+            for ch in targets:
+                await ch.send(embed=embed)
+
+            last_reposted_ids.add(msg.id)
+            posted += 1
+
+        if posted:
+            print(f"✅ Reposted {posted} message(s).")
         else:
-            content = "[No content found]"
-
-        embed = discord.Embed(
-            title="🧪 Test Repost from PSRP Channel",
-            description=content,
-            color=0x3498db
-        )
-        await alert_channel.send(embed=embed)
-        await ctx.send("✅ Message reposted.")
+            print("⚠️ No new messages to repost.")
 
     except Exception as e:
-        print(f"Error in !testrepost: {e}")
-        await ctx.send(f"❌ Error: {e}")
+        print(f"❌ Error in auto repost loop: {str(e)}")
+
+
+from discord.ext import tasks
+
+@tasks.loop(seconds=10)
+async def auto_testrepost():
+    await run_repost_check()
+
+@bot.event
+async def on_ready():
+    print(f"✅ Logged in as {bot.user}")
+    auto_testrepost.start()
+
 @bot.event
 async def on_message(message):
     if message.author.bot:
