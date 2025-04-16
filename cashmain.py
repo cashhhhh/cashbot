@@ -243,75 +243,62 @@ TIME_WINDOW = 60  # Time window in seconds
 ALERT_USER_IDS = [480028928329777163,
                   230803708034678786]  # Users to notify on spike
 
+# ✅ Minimal Reposting Loop Injected into Existing Bot
 
-load_dotenv()
-WEBHOOK_URL = os.getenv("KEY_TRACKER_WEBHOOK")
-last_webhook_time = 0
+SOURCE_CHANNEL_ID = 1361882298282283161
+REPOST_CHANNELS = [
+    1223077287457587221,
+    1361847485961601134
+]
 
-# ✅ Send Message or Embed to Outbound Webhook
-def send_to_webhook(
-    content: str = None,
-    username: str = "CashBot Logger",
-    avatar_url: str = None,
-    embed_title: str = None,
-    embed_description: str = None,
-    embed_fields: list = None,
-    color: int = 0xFF0000
-):
-    global last_webhook_time
+last_reposted_ids = set()
 
-    if not WEBHOOK_URL:
-        print("❌ WEBHOOK_URL not found.")
-        return
+from discord.ext import tasks
 
-    now = time.time()
-    if now - last_webhook_time < 0.25:
-        time.sleep(0.3)
-
-    data = {"username": username}
-    if content:
-        data["content"] = content
-    if avatar_url:
-        data["avatar_url"] = avatar_url
-
-    if embed_title or embed_description or embed_fields:
-        embed = {
-            "title": embed_title or "",
-            "description": embed_description or "",
-            "color": color,
-            "fields": []
-        }
-        if embed_fields:
-            for name, value, inline in embed_fields:
-                embed["fields"].append({"name": name, "value": value, "inline": inline})
-        data["embeds"] = [embed]
-
+async def perform_repost():
     try:
-        response = requests.post(WEBHOOK_URL, json=data)
-        last_webhook_time = time.time()
+        source = bot.get_channel(SOURCE_CHANNEL_ID)
+        targets = [bot.get_channel(cid) for cid in REPOST_CHANNELS]
 
-        if response.status_code == 429:
-            retry_after = response.json().get("retry_after", 1)
-            print(f"⏳ Rate limited. Retrying in {retry_after} seconds...")
-            time.sleep(retry_after)
-            send_to_webhook(content, username, avatar_url, embed_title, embed_description, embed_fields, color)
-        elif response.status_code not in [200, 204]:
-            print(f"❌ Webhook failed: {response.status_code} - {response.text}")
-        else:
-            print("✅ Webhook sent.")
+        if not source or any(ch is None for ch in targets):
+            print("❌ Missing channel(s).")
+            return
+
+        messages = [msg async for msg in source.history(limit=5)]
+        for msg in reversed(messages):  # oldest first
+            if msg.id in last_reposted_ids:
+                continue
+
+            content = msg.content or (msg.embeds[0].description if msg.embeds else "[No content]")
+            embed = discord.Embed(
+                title="🔁 Repost",
+                description=content,
+                color=0x3498db
+            )
+
+            for ch in targets:
+                await ch.send(embed=embed)
+
+            last_reposted_ids.add(msg.id)
+            print(f"✅ Reposted message {msg.id}")
+
     except Exception as e:
-        print(f"❌ Error sending webhook: {e}")
+        print(f"❌ Error: {e}")
 
-# ✅ Auto-forward PSRP webhook posts to outbound webhook
+@tasks.loop(seconds=10)
+async def auto_repost():
+    await perform_repost()
+
+@bot.command()
+@commands.is_owner()
+async def manualrepost(ctx):
+    await perform_repost()
+    await ctx.send("✅ Manual repost check complete.")
+
 @bot.event
-async def on_message(message):
-    if message.channel.id == 1361882298282283161 and message.webhook_id:
-        send_to_webhook(
-            embed_title="🔑 PSRP Key Event",
-            embed_description=message.content,
-            color=0x3498db
-        )
-    await bot.process_commands(message)
+async def on_ready():
+    print(f"✅ Logged in as {bot.user}")
+    auto_repost.start()
 
 
 
