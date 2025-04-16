@@ -1088,7 +1088,7 @@ async def start_training(ctx):
 @bot.command(name="trainskip")
 async def skip_training(ctx):
     """Skip current training step if in session."""
-    if ctx.author.id not in user_training_sessio
+    if ctx.author.id not in user_training_session:
         await ctx.send("❌ You're not in an active training session.")
         return
     await ctx.send("⏭️ Step will be skipped on your next message.")
