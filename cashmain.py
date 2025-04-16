@@ -260,23 +260,40 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 PSRP_WEBHOOK_CHANNEL_ID = 1361882298282283161
 REPOST_TARGET_CHANNEL_ID = 1223077287457587221
 
+
 @bot.event
 async def on_message(message):
-    # Only respond to PSRP webhook messages
-    if message.channel.id == PSRP_WEBHOOK_CHANNEL_ID and message.webhook_id:
-        target_channel = bot.get_channel(REPOST_TARGET_CHANNEL_ID)
+    # Watch only the PSRP webhook channel
+    if message.channel.id == 1361882298282283161 and message.webhook_id:
+        target_channel = bot.get_channel(1361847485961601134)  # Updated alert channel ID
 
         if target_channel:
-            embed = discord.Embed(
-                title="🔑 PSRP Key Event",
-                description=message.content,
-                color=0x3498db
-            )
-            await target_channel.send(embed=embed)
+            try:
+                content = message.content or "[No message content found]"
+                embed = discord.Embed(
+                    title="🔑 PSRP Key Event",
+                    description=content,
+                    color=0x3498db
+                )
+                await target_channel.send(embed=embed)
+            except Exception as e:
+                print(f"❌ Failed to post webhook alert: {e}")
         else:
-            print("❌ Could not find the target repost channel.")
+            print("❌ Target repost channel not found.")
 
+    # Required for commands to work
     await bot.process_commands(message)
+
+
+# ✅ Clean global error handler — suppress unknown command spam
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandNotFound):
+        return  # 🔇 Silently ignore unknown commands
+    elif isinstance(error, commands.MissingPermissions):
+        await ctx.send("⛔ Insufficient permissions")
+    else:
+        await ctx.send(f"⚠️ Error: {str(error)}")
 
 
 
