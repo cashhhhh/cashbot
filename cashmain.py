@@ -3205,7 +3205,7 @@ async def on_member_join(member):
 
     except Exception as e:
         logging.error(f"Alt detector error: {str(e)}")
-@last_reposted_ids = set()
+last_reposted_ids = set()
 
 async def run_repost_check():
     try:
