@@ -2886,6 +2886,58 @@ async def checkticket_log(ctx, amount: float, unread_only: bool = True):
         await ctx.send("❌ An error occurred while fetching emails.")
         logging.error(f"Checkticket log error: {str(e)}")
 
+from discord.ext import tasks
+
+@tasks.loop(seconds=10)
+async def auto_repost_psrp():
+    try:
+        psrp_channel = bot.get_channel(1361882298282283161)
+        alert_channel_1 = bot.get_channel(1361847485961601134)
+        alert_channel_2 = bot.get_channel(1223077287457587221)
+
+        if not psrp_channel or not alert_channel_1 or not alert_channel_2:
+            print("❌ One or more channels not found.")
+            return
+
+        messages = [msg async for msg in psrp_channel.history(limit=1)]
+        if not messages:
+            print("⚠️ No messages found.")
+            return
+
+        last_msg = messages[0]
+        if hasattr(bot, 'last_msg_id') and bot.last_msg_id == last_msg.id:
+            return  # Already posted this one
+
+        bot.last_msg_id = last_msg.id
+
+        if last_msg.content:
+            content = last_msg.content
+        elif last_msg.embeds:
+            content = last_msg.embeds[0].description or str(last_msg.embeds[0].to_dict())
+        else:
+            content = "[No content found]"
+
+        embed = discord.Embed(
+            title="🔁 PSRP Auto Repost",
+            description=content,
+            color=0x00b0f4
+        )
+
+        await alert_channel_1.send(embed=embed)
+        await alert_channel_2.send(embed=embed)
+        print("✅ Reposted message.")
+
+    except Exception as e:
+        print(f"❌ Repost error: {e}")
+
+@bot.event
+async def on_ready():
+    print(f"✅ Logged in as {bot.user}")
+    auto_repost_psrp.start()
+
+
+
+
 @bot.command(name='printroleids')
 async def print_role_ids(ctx):
     """Print all role IDs from the config file (Owner only)"""
