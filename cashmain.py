@@ -3551,12 +3551,11 @@ async def on_command_error(ctx, error):
     )
     
     if isinstance(error, commands.CommandNotFound):
-        await ctx.send("❌ Invalid command")
+        return  # 🔇 Silently ignore unknown commands
     elif isinstance(error, commands.MissingPermissions):
         await ctx.send("⛔ Insufficient permissions")
     else:
         await ctx.send(f"⚠️ Error: {str(error)}")
-
 
 
 # Start monitoring when bot is ready
