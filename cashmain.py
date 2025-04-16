@@ -1631,6 +1631,70 @@ async def topusers(ctx):
 
     await ctx.send(embed=embed)
 
+from discord.ext import tasks
+import discord
+from discord.ext import commands
+
+# 🔁 Webhook Polling Loop
+@tasks.loop(seconds=10)
+async def poll_webhook_channel():
+    try:
+        channel = bot.get_channel(1361882298282283161)  # Webhook source channel
+        repost1 = bot.get_channel(1223077287457587221)  # Alert Channel 1
+        repost2 = bot.get_channel(1361847485961601134)  # Alert Channel 2
+
+        if not channel or not repost1 or not repost2:
+            print("❌ One or more repost channels not found.")
+            return
+
+        messages = [msg async for msg in channel.history(limit=1)]
+        if not messages:
+            print("⚠️ No messages found in webhook channel.")
+            return
+
+        last = messages[0]
+        if hasattr(bot, 'last_seen') and bot.last_seen == last.id:
+            return  # Already reposted this one
+
+        bot.last_seen = last.id  # Store the message ID to prevent reposting
+
+        # Handle both content and embed-only messages
+        content = last.content or (
+            last.embeds[0].description if last.embeds else "[No content]"
+        )
+
+        embed = discord.Embed(
+            title="🔁 Auto-Repost from PSRP",
+            description=content,
+            color=0x3498db
+        )
+
+        await repost1.send(embed=embed)
+        await repost2.send(embed=embed)
+        print(f"✅ Reposted message ID: {last.id}")
+
+    except Exception as e:
+        print(f"❌ Polling error: {e}")
+
+# 🚀 Start the loop when the bot is ready
+@bot.event
+async def on_ready():
+    print(f"✅ Logged in as {bot.user}")
+    poll_webhook_channel.start()
+
+# 📊 Repost Tracker Command
+@bot.command()
+@commands.is_owner()
+async def repoststatus(ctx):
+    """Check the last reposted webhook message ID."""
+    try:
+        if hasattr(bot, 'last_seen'):
+            await ctx.send(f"✅ Last reposted message ID: `{bot.last_seen}`")
+        else:
+            await ctx.send("⚠️ No webhook message has been reposted yet.")
+    except Exception as e:
+        await ctx.send(f"❌ Error checking repost status: {e}")
+
 
 @bot.command()
 async def checkapplication(ctx, channel_id: int):
