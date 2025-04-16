@@ -260,40 +260,62 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 PSRP_WEBHOOK_CHANNEL_ID = 1361882298282283161
 REPOST_TARGET_CHANNEL_ID = 1223077287457587221
 
-@bot.event
-async def on_message(message):
-    # Watch only the PSRP webhook channel
-    if message.channel.id == 1361882298282283161 and message.webhook_id:
-        target_channel = bot.get_channel(1361847485961601134)  # Updated alert channel ID
+# ✅ Reposting Webhook Messages by Polling Instead of Relying on on_message
+from discord.ext import tasks
 
-        if target_channel:
-            try:
-                content = message.content or "[No message content found]"
-                embed = discord.Embed(
-                    title="🔑 PSRP Key Event",
-                    description=content,
-                    color=0x3498db
-                )
-                await target_channel.send(embed=embed)
-            except Exception as e:
-                print(f"❌ Failed to post webhook alert: {e}")
+@tasks.loop(seconds=10)  # Poll every 10 seconds
+async def poll_psrp_webhook():
+    try:
+        psrp_channel = bot.get_channel(1361882298282283161)
+        alert_channel = bot.get_channel(1361847485961601134)
+
+        if not psrp_channel or not alert_channel:
+            print("❌ PSRP or alert channel not found.")
+            return
+
+        messages = [msg async for msg in psrp_channel.history(limit=1)]
+        if not messages:
+            return
+
+        last_msg = messages[0]
+        if hasattr(bot, 'last_seen_msg_id') and bot.last_seen_msg_id == last_msg.id:
+            return  # Already processed this message
+
+        bot.last_seen_msg_id = last_msg.id
+
+        if last_msg.content:
+            content = last_msg.content
+        elif last_msg.embeds:
+            content = last_msg.embeds[0].description or str(last_msg.embeds[0].to_dict())
         else:
-            print("❌ Target repost channel not found.")
+            content = "[No content found]"
 
-    # Required for commands to work
-    await bot.process_commands(message)
+        embed = discord.Embed(
+            title="🔁 Auto-Repost from PSRP",
+            description=content,
+            color=0x3498db
+        )
+        await alert_channel.send(embed=embed)
+
+    except Exception as e:
+        print(f"❌ Error in webhook polling: {e}")
+
+# ✅ Start the polling task when the bot is ready
+@bot.event
+async def on_ready():
+    print(f"✅ Logged in as {bot.user}")
+    poll_psrp_webhook.start()
 
 
-# ✅ Clean global error handler — suppress unknown command spam
+# ✅ Error Handler
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
-        return  # 🔇 Silently ignore unknown commands
+        return
     elif isinstance(error, commands.MissingPermissions):
         await ctx.send("⛔ Insufficient permissions")
     else:
         await ctx.send(f"⚠️ Error: {str(error)}")
-
 
 
 
