@@ -3183,7 +3183,7 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # ✅ 1. Repost PSRP Webhook
+    # 1. PSRP webhook repost
     if message.channel.id == 1361882298282283161 and message.webhook_id:
         repost_channels = [
             bot.get_channel(1223077287457587221),
@@ -3199,7 +3199,7 @@ async def on_message(message):
             if ch:
                 await ch.send(embed=embed)
 
-    # ✅ 2. Ticket Credit Reminder
+    # 2. Ticket credit reminder
     if message.channel.name.lower().startswith("ticket"):
         user_id = str(message.author.id)
         if user_id in credits and credits[user_id] > 0:
@@ -3207,7 +3207,7 @@ async def on_message(message):
                 f"🎉 {message.author.mention}, you have **${credits[user_id]:.2f}** credit available!"
             )
 
-    # ✅ 3. Blacklisted Buyer Detection in Ticket Channels (e.g. vehicle-1234)
+    # 3. Blacklist check
     if re.match(r"^\w+-\d+$", message.channel.name):
         if is_blacklisted(str(message.author.id)):
             await message.channel.send(
@@ -3215,7 +3215,7 @@ async def on_message(message):
                 f"tried to buy something in {message.channel.mention}."
             )
 
-    # ✅ 4. Dev Server Flagged Word Monitoring
+    # 4. Dev server flagged word check
     if message.guild and message.guild.id == DEV_SERVER_ID:
         lowered = message.content.lower()
         for word in FLAGGED_WORDS:
@@ -3230,19 +3230,9 @@ async def on_message(message):
                     )
                 break
 
-    # ✅ 5. DM Logging to Bot Owner
-    if isinstance(message.channel, discord.DMChannel):
-        owner = await bot.fetch_user(480028928329777163)
-        if owner:
-            embed = discord.Embed(
-                title="📥 New DM Received",
-                description=f"From: {message.author} ({message.author.id})\nContent: {message.content}",
-                color=discord.Color.blue()
-            )
-            await owner.send(embed=embed)
-
-    # ✅ Allow commands to function
+    # 5. Allow other commands to run
     await bot.process_commands(message)
+
 
 
 @bot.command(name='audit')
