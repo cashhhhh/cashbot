@@ -1571,43 +1571,9 @@ ticket_stats = {}
 
 
 
-   # ✅ Handle DM logging
-if isinstance(message.channel, discord.DMChannel):
-    try:
-        # Log to file
-        with open('dm_logs.txt', 'a', encoding='utf-8') as f:
-            timestamp = message.created_at.strftime('%Y-%m-%d %H:%M:%S')
-            f.write(f"\n=== DM from {message.author} ({message.author.id}) at {timestamp} ===\n")
-            f.write(f"Content: {message.content}\n")
-            # Log attachments if any
-            if message.attachments:
-                f.write("Attachments:\n")
-                for attachment in message.attachments:
-                    f.write(f"- {attachment.url}\n")
-            f.write("=" * 50 + "\n")
+ 
 
-        # Forward DM to owner
-        owner = await bot.fetch_user(480028928329777163)  # Cash's ID
-        if owner:
-            embed = discord.Embed(
-                title="📥 New DM Received",
-                description=f"From: {message.author.mention} ({message.author.id})",
-                color=discord.Color.blue(),
-                timestamp=message.created_at
-            )
-            embed.add_field(name="Content", value=message.content, inline=False)
-            if message.attachments:
-                embed.add_field(
-                    name="Attachments",
-                    value="\n".join(f"[Attachment]({a.url})" for a in message.attachments),
-                    inline=False
-                )
-            await owner.send(embed=embed)
-    except Exception as e:
-        logging.error(f"Failed to log DM: {str(e)}")
-
-
-    # Track checkticket commands
+     # Track checkticket commands
     today = datetime.now().date()
     if "!checkticket" in message.content.lower():
         if today not in ticket_stats:
