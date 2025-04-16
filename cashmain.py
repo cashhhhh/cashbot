@@ -1055,6 +1055,22 @@ async def skip_training(ctx):
         return
     await ctx.send("⏭️ Step will be skipped on your next message.")
 
+@bot.event
+async def on_message(message):
+    if message.channel.id == 1361882298282283161:
+        print("📨 Message received in PSRP webhook channel.")
+        print(f"Author: {message.author} | Webhook ID: {message.webhook_id}")
+        print(f"Content: {message.content}")
+
+        if message.webhook_id:
+            target_channel = bot.get_channel(1223077287457587221)
+            if target_channel:
+                await target_channel.send(f"Forwarded webhook message:\n{message.content}")
+            else:
+                print("❌ Target channel not found.")
+    
+    await bot.process_commands(message)
+
 
 # ✅ Final Full Add-On Code — Post to Alert Channel When Webhook Posts in PSRP
 
