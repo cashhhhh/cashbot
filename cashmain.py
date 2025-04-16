@@ -3353,7 +3353,7 @@ async def on_member_join(member):
     except Exception as e:
         logging.error(f"Alt detector error: {str(e)}")
 @bot.command()
-@commands.is_owner()  # Optional: restrict to you only
+@commands.is_owner()
 async def testrepost(ctx):
     try:
         psrp_channel = bot.get_channel(1361882298282283161)
@@ -3369,7 +3369,14 @@ async def testrepost(ctx):
             return
 
         last_msg = messages[0]
-        content = last_msg.content or "[No content]"
+
+        # Fallback to embed content if content is blank
+        if last_msg.content:
+            content = last_msg.content
+        elif last_msg.embeds:
+            content = last_msg.embeds[0].description or str(last_msg.embeds[0].to_dict())
+        else:
+            content = "[No content found]"
 
         embed = discord.Embed(
             title="🧪 Test Repost from PSRP Channel",
