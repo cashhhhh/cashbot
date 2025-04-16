@@ -86,48 +86,6 @@ giftcard_codes = {
     "10": ["CDE567-FGH890", "IJK123-LMN456", "OPQ789-RST012"]
 }
 
-
-
-    # Age check
-    if "age:" in content and any(str(age) in content for age in range(1, 16)):
-        reasons.append("❌ Must be 16 or older")
-
-    # Grammar and sentence structure
-   # Update the conditional check to ensure s is not None
-    has_short_sentences = any(
-        len(s.strip().split()) < 3 for s in sentences if s and s.strip())
-    if has_short_sentences:
-        reasons.append("❌ Incomplete sentences detected")
-
-    # Check for proper capitalization
-    if not any(s.strip()[0].isupper() for s in sentences if s.strip()):
-        reasons.append("❌ Lack of proper capitalization")
-
-    # Check for pings/impatience indicators
-    if "@" in content or "asap" in content or "urgent" in content:
-        reasons.append("❌ Contains pings or shows impatience")
-
-    # Calculate final score
-    passed = len(reasons) == 0
-
-    embed = discord.Embed(
-        title="📝 Sales Application Evaluation",
-        color=discord.Color.green() if passed else discord.Color.red(),
-        timestamp=message.created_at)
-
-    embed.add_field(name="Channel",
-                    value=message.channel.mention,
-                    inline=False)
-    embed.add_field(name="Applicant",
-                    value=message.author.mention,
-                    inline=False)
-    embed.add_field(name="Status",
-                    value="✅ PASSED" if passed else "❌ FAILED",
-                    inline=False)
-
-    if reasons:
-        embed.add_field(name="Reasons", value="\n".join(reasons), inline=False)
-
     return embed
 @bot.event
 async def on_command_error(ctx, error):
