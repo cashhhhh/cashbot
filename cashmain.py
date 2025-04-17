@@ -1671,31 +1671,33 @@ MAX_CRASH_LOGS = 3
 ticket_stats = {}
 
 
-    # Track checkticket commands
+  # Track checkticket commands
+today = datetime.now().date()
+
+if "!checkticket" in message.content.lower():
+    if today not in ticket_stats:
+        ticket_stats[today] = {"count": 0, "amounts": []}
+
+    # Extract amount from command
+    try:
+        amount = float(message.content.split()[1])
+        ticket_stats[today]["count"] += 1
+        ticket_stats[today]["amounts"].append(amount)
+    except (IndexError, ValueError):
+        pass
+
+# Log messages for specified channel
+if message.channel.id == 1103526122211262565:
     today = datetime.now().date()
-    if "!checkticket" in message.content.lower():
-        if today not in ticket_stats:
-            ticket_stats[today] = {"count": 0, "amounts": []}
+    if today not in daily_messages:
+        daily_messages[today] = {}
 
-        # Extract amount from command
-        try:
-            amount = float(message.content.split()[1])
-            ticket_stats[today]["count"] += 1
-            ticket_stats[today]["amounts"].append(amount)
-        except (IndexError, ValueError):
-            pass
+    author_id = str(message.author.id)
+    if author_id not in daily_messages[today]:
+        daily_messages[today][author_id] = {'count': 0, 'total': 0.0}
 
-    # Log messages for specified channel
-    if message.channel.id == 1103526122211262565:
-        today = datetime.now().date()
-        if today not in daily_messages:
-            daily_messages[today] = {}
+    daily_messages[today][author_id]['count'] += 1
 
-        author_id = str(message.author.id)
-        if author_id not in daily_messages[today]:
-            daily_messages[today][author_id] = {'count': 0, 'total': 0.0}
-
-        daily_messages[today][author_id]['count'] += 1
 
         # Check for ticket mentions
         content = message.content
