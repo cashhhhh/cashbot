@@ -1723,22 +1723,30 @@ if ticket_match:
         pass
 
 
-            if not found_closure:
-                try:
-                    alert_channel = bot.get_channel(1223077287457587221)
-                    alert_embed = discord.Embed(
-                        title="🚨 Ticket Alert",
-                        description=
-                        f"Ticket mentioned but not found closed:\nTicket ID: {ticket_id}\nUser: {message.author.mention}",
-                        color=discord.Color.red(),
-                        timestamp=datetime.now())
-                    alert_embed.add_field(
-                        name="Message Link",
-                        value=f"[Click here]({message.jump_url})")
-                    if alert_channel:
-                        await alert_channel.send(embed=alert_embed)
-                except Exception as e:
-                    logging.error(f"Failed to send ticket alert: {e}")
+           if not found_closure:
+    try:
+        alert_channel = bot.get_channel(1223077287457587221)
+        alert_embed = discord.Embed(
+            title="🚨 Ticket Alert",
+            description=(
+                f"Ticket mentioned but not found closed:\n"
+                f"**Ticket ID:** `{ticket_id}`\n"
+                f"**User:** {message.author.mention}"
+            ),
+            color=discord.Color.red(),
+            timestamp=datetime.now()
+        )
+        alert_embed.add_field(
+            name="Message Link",
+            value=f"[Click here to view message]({message.jump_url})",
+            inline=False
+        )
+
+        if alert_channel:
+            await alert_channel.send(embed=alert_embed)
+
+    except Exception as e:
+        logging.error(f"❌ Failed to send ticket alert: {e}")
 
         content = content.lower()
         import re
