@@ -872,7 +872,10 @@ async def build_dev_server(ctx):
     except:
         await ctx.send("✅ Server created, but I couldn’t DM you the invite.")
 
-    await ctx.send("🎉 Server created! Join it and run `!getownerrole` inside to claim your owner role.")@bot.command(name="apply")
+    await ctx.send("🎉 Server created! Join it and run `!getownerrole` inside to claim your owner role.")
+    
+    
+    @bot.command(name="apply")
 async def apply(ctx):
     """Handles application flow in DMs and sends result to owner."""
     if ctx.channel.name != "applications":
