@@ -620,6 +620,11 @@ async def on_guild_channel_create(channel):
 from datetime import datetime, timedelta
 import re
 
+# ✅ Fraud Detection + Repost + Check Ticket Value Tracker
+
+from datetime import datetime, timedelta
+import re
+
 CAR_VALUES = {
     "amloadinga": 10, "cccrazy": 10, "vanzs14": 0, "jtss": 10, "petedaycab/trailkinght": 8,
     "dombeast": 30, "ruffgt40v2": 30, "rryosemite1500nlc": 30, "rryosemite1500nlc2": 30, "offdominatorcaracpd": 30,
@@ -666,10 +671,16 @@ async def on_message(message):
         matched = []
         total_value = 0
 
-        for model in CAR_VALUES:
-            if model.lower() in content_lower:
-                matched.append(model)
-                total_value += CAR_VALUES[model]
+        import string
+
+lines = message.content.lower().splitlines()
+cleaned_lines = [line.translate(str.maketrans("", "", string.punctuation)) for line in lines]
+
+for line in cleaned_lines:
+    for model in CAR_VALUES:
+        if model.lower() in line:
+            matched.append(model)
+            total_value += CAR_VALUES[model]
 
         if matched:
             # Check if a recent checkticket covers this
