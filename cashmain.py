@@ -1708,19 +1708,7 @@ if ticket_match:
     found_closure = False
     five_minutes_ago = datetime.now() - timedelta(minutes=5)
 
-    try:
-        async for entry in message.guild.audit_logs(
-            limit=50,
-            action=discord.AuditLogAction.channel_delete,
-            after=five_minutes_ago
-        ):
-            if entry.target and isinstance(entry.target, discord.abc.GuildChannel):
-                if entry.target.name == f'ticket-{ticket_id}':
-                    found_closure = True
-                    break
-    except discord.Forbidden:
-        logging.error("Bot lacks audit log permissions")
-        pass
+ 
 
 
 # ✅ Check for ticket mentions
