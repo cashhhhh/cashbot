@@ -1,6 +1,7 @@
 
 
 
+
 import re
 import os
 import pickle
@@ -243,7 +244,7 @@ TIME_WINDOW = 60  # Time window in seconds
 ALERT_USER_IDS = [480028928329777163,
                   230803708034678786]  # Users to notify on spike
 
-# ✅ Full repost logic with embed field support
+# ✅ Minimal Reposting Loop Injected into Existing Bot
 
 SOURCE_CHANNEL_ID = 1361882298282283161
 REPOST_CHANNELS = [
@@ -269,24 +270,10 @@ async def perform_repost():
             if msg.id in last_reposted_ids:
                 continue
 
-            # Combine message content and embed data
-            content = msg.content or ""
-            embed_text = ""
-
-            if msg.embeds:
-                em = msg.embeds[0]
-                if em.description:
-                    embed_text += em.description + "\n"
-                for field in em.fields:
-                    embed_text += f"**{field.name}**\n{field.value}\n\n"
-
-            full_text = (content + "\n\n" + embed_text).strip()
-            if not full_text:
-                full_text = "[No content]"
-
+            content = msg.content or (msg.embeds[0].description if msg.embeds else "[No content]")
             embed = discord.Embed(
-                title="🔁 Repost from PSRP",
-                description=full_text,
+                title="🔁 Repost",
+                description=content,
                 color=0x3498db
             )
 
@@ -299,6 +286,7 @@ async def perform_repost():
     except Exception as e:
         print(f"❌ Error: {e}")
 
+
 @tasks.loop(seconds=10)
 async def auto_repost():
     print("⏱️ Auto repost loop ticked")
@@ -309,6 +297,21 @@ async def auto_repost():
 async def manualrepost(ctx):
     await perform_repost()
     await ctx.send("✅ Manual repost check complete.")
+
+
+@bot.event
+async def on_ready():
+    global start_time
+    start_time = time.time()
+
+    print(f"✅ Logged in as {bot.user}")
+    auto_repost.start()  # ← ✅ starts the repost loop
+    monitor_sales_activity.start()  # ← if you're using this too
+
+    # Optional: Update channel ping or logging
+    update_channel = bot.get_channel(1361849234550165618)
+    if update_channel:
+        await update_channel.send("🔄 **Bot restarted. Repost loop is active.**")
 
 
 
