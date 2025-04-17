@@ -1739,8 +1739,6 @@ if ticket_match:
                 inline=False
             )
 
-            if alert_channel:
-                await alert_channel.send(embed=alert_embed)
 
         except Exception as e:
             logging.error(f"❌ Failed to send ticket alert: {e}")
