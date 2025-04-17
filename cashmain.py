@@ -657,8 +657,7 @@ checkticket_logs = []
 
 @bot.event
 async def on_message(message):
-    if message.author.bot:
-        return
+
 
     content_lower = message.content.lower()
     now = datetime.utcnow()
