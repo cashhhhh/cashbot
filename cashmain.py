@@ -2,6 +2,7 @@
 
 
 
+
 import re
 import os
 import pickle
@@ -237,6 +238,25 @@ def success():
     return "Authentication successful. Now you can test the bot commands in Discord."
 
 
+# Store command usage timestamps
+checkticket_timestamps = []
+SPIKE_THRESHOLD = 5  # Number of commands within time window to trigger alert
+TIME_WINDOW = 60  # Time window in seconds
+ALERT_USER_IDS = [480028928329777163,
+                  230803708034678786]  # Users to notify on spike
+
+# ✅ Minimal Reposting Loop Injected into Existing Bot
+
+SOURCE_CHANNEL_ID = 1361882298282283161
+REPOST_CHANNELS = [
+    1223077287457587221,
+    1361847485961601134
+]
+
+last_reposted_ids = set()
+
+from discord.ext import tasks
+
 async def perform_repost():
     try:
         source = bot.get_channel(SOURCE_CHANNEL_ID)
@@ -251,27 +271,10 @@ async def perform_repost():
             if msg.id in last_reposted_ids:
                 continue
 
-            full_text = ""
-
-            # Step 1: Include raw message content
-            if msg.content:
-                full_text += f"{msg.content}\n\n"
-
-            # Step 2: Process each embed
-            for em in msg.embeds:
-                if em.title:
-                    full_text += f"**{em.title}**\n"
-                if em.description:
-                    full_text += f"{em.description}\n"
-                for field in em.fields:
-                    full_text += f"\n**{field.name}**\n{field.value}\n"
-
-            # Clean up and truncate if necessary
-            full_text = full_text.strip() or "[No content]"
-
+            content = msg.content or (msg.embeds[0].description if msg.embeds else "[No content]")
             embed = discord.Embed(
-                title="🔁 Repost from PSRP",
-                description=full_text[:4000],  # Discord embed limit
+                title="🔁 Repost",
+                description=content,
                 color=0x3498db
             )
 
@@ -285,6 +288,16 @@ async def perform_repost():
         print(f"❌ Error: {e}")
 
 
+@tasks.loop(seconds=10)
+async def auto_repost():
+    print("⏱️ Auto repost loop ticked")
+    await perform_repost()
+
+@bot.command()
+@commands.is_owner()
+async def manualrepost(ctx):
+    await perform_repost()
+    await ctx.send("✅ Manual repost check complete.")
 
 
 @bot.event
