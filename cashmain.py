@@ -244,7 +244,7 @@ TIME_WINDOW = 60  # Time window in seconds
 ALERT_USER_IDS = [480028928329777163,
                   230803708034678786]  # Users to notify on spike
 
-# ✅ Minimal Reposting Loop Injected into Existing Bot
+# ✅ Full repost logic with embed field support
 
 SOURCE_CHANNEL_ID = 1361882298282283161
 REPOST_CHANNELS = [
@@ -270,10 +270,33 @@ async def perform_repost():
             if msg.id in last_reposted_ids:
                 continue
 
-            content = msg.content or (msg.embeds[0].description if msg.embeds else "[No content]")
+            full_text = ""
+
+            # Step 1: Include raw message content
+            if msg.content:
+                full_text += f"{msg.content}
+
+"
+
+            # Step 2: Process each embed
+            for em in msg.embeds:
+                if em.title:
+                    full_text += f"**{em.title}**
+"
+                if em.description:
+                    full_text += f"{em.description}
+"
+                for field in em.fields:
+                    full_text += f"
+**{field.name}**
+{field.value}
+"
+
+            full_text = full_text.strip() or "[No content]"
+
             embed = discord.Embed(
-                title="🔁 Repost",
-                description=content,
+                title="🔁 Repost from PSRP",
+                description=full_text[:4000],  # Discord embed description limit
                 color=0x3498db
             )
 
@@ -286,7 +309,6 @@ async def perform_repost():
     except Exception as e:
         print(f"❌ Error: {e}")
 
-
 @tasks.loop(seconds=10)
 async def auto_repost():
     print("⏱️ Auto repost loop ticked")
@@ -297,7 +319,6 @@ async def auto_repost():
 async def manualrepost(ctx):
     await perform_repost()
     await ctx.send("✅ Manual repost check complete.")
-
 
 @bot.event
 async def on_ready():
