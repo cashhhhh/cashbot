@@ -3,6 +3,7 @@
 
 
 
+
 import re
 import os
 import pickle
@@ -16,7 +17,8 @@ from flask import Flask, redirect, request
 import discord
 from discord.ext import commands
 from discord.ui import Button, View
-import thr
+import threading
+import asyncio
 import boto3  # AWS SDK for Python
 import psutil
 import json
@@ -34,7 +36,7 @@ else:
     config = {}
 # At top of file if not already present:
 giftcard_cache = {
-    "value"
+    "value": 0.0,
     "used": 0.0,
     "unused": 0.0,
     "codes": 0,
@@ -50,6 +52,10 @@ def load_used_codes():
                     code = line.strip().split(',')[0]
                     used.add(code)
     except FileNotFoundError:
+        pass
+    return used
+
+
 # Add these global variables at the top with other globals
 SALES_ROLE_ID = 1103522760073945168  # Replace with your sales role ID
 ALERT_CHANNEL_ID = 1223077287457587221  # Your existing alert channel
@@ -867,7 +873,56 @@ async def build_dev_server(ctx):
     except:
         await ctx.send("✅ Server created, but I couldn’t DM you the invite.")
 
-    await ctx.send("🎉 Server created! Join it and run `!getownerrole` inside to claim your owner role.")
+    await ctx.send("🎉 Server created! Join it and run `!getownerrole` inside to claim your owner role.")@bot.command(name="apply")
+async def apply(ctx):
+    """Handles application flow in DMs and sends result to owner."""
+    if ctx.channel.name != "applications":
+        return await ctx.send("❌ You must run this in the #applications channel.")
+
+    try:
+        await ctx.author.send("📋 How many people are in your server?")
+        people_msg = await bot.wait_for(
+            "message",
+            timeout=60,
+            check=lambda m: m.author == ctx.author and isinstance(m.channel, discord.DMChannel)
+        )
+
+        await ctx.author.send("🚗 How many cars are you managing?")
+        cars_msg = await bot.wait_for(
+            "message",
+            timeout=60,
+            check=lambda m: m.author == ctx.author and isinstance(m.channel, discord.DMChannel)
+        )
+
+        owner = (await bot.application_info()).owner
+
+        embed = discord.Embed(
+            title="New Bot Access Application",
+            description=f"**User:** {ctx.author.mention}\n"
+                        f"**Server Size:** {people_msg.content}\n"
+                        f"**Cars Managed:** {cars_msg.content}",
+            color=discord.Color.orange(),
+            timestamp=datetime.utcnow()
+        )
+
+        class ApprovalView(discord.ui.View):
+            @discord.ui.button(label="Yes", style=discord.ButtonStyle.green)
+            async def yes(self, interaction: discord.Interaction, button: discord.ui.Button):
+                if interaction.user.id != owner.id:
+                    return await interaction.response.send_message("❌ You’re not authorized.", ephemeral=True)
+                await interaction.response.send_message("✅ Approved!", ephemeral=True)
+
+            @discord.ui.button(label="No", style=discord.ButtonStyle.red)
+            async def no(self, interaction: discord.Interaction, button: discord.ui.Button):
+                if interaction.user.id != owner.id:
+                    return await interaction.response.send_message("❌ You’re not authorized.", ephemeral=True)
+                await interaction.response.send_message("❌ Denied.", ephemeral=True)
+
+        await owner.send(embed=embed, view=ApprovalView())
+        await ctx.author.send("✅ Application submitted. You'll be contacted shortly.")
+    except Exception:
+        await ctx.send("❌ Failed to DM you. Please open your DMs.")
+
 
 @bot.command()
 async def profit(ctx):
