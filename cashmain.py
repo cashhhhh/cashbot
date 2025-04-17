@@ -640,32 +640,30 @@ CAR_VALUES = {
 FRAUD_WATCH_CHANNEL = 1361847485961601134
 FRAUD_ALERT_CHANNEL = 1362243005435740410
 OWNER_ID = 480028928329777163
-
-# Store checkticket logs: list of (timestamp, value)
 checkticket_logs = []
 
 @bot.event
 async def on_message(message):
-    content_lower = message.content.lower()
     now = datetime.utcnow()
 
-    # --- Track check ticket commands ---
+    # === Track !checkticket commands ===
     if message.content.startswith("!checkticket") or "$" in message.content:
         dollar_match = re.search(r"\$(\d+)", message.content)
         if dollar_match:
             value = int(dollar_match.group(1))
             checkticket_logs.append((now, value))
-            # Clean old logs
             checkticket_logs[:] = [(t, v) for t, v in checkticket_logs if now - t <= timedelta(minutes=10)]
 
-    # --- Fraud Monitoring in target channel ---
+    # === Fraud Monitor ===
     if message.channel.id == FRAUD_WATCH_CHANNEL:
+        print("📥 Watching message in fraud channel...")
+
         matched = []
         total_value = 0
 
-        # Gather content + embed fields
         full_text = message.content or ""
 
+        # Grab from embed fields
         if message.embeds:
             for em in message.embeds:
                 if em.title:
@@ -675,7 +673,6 @@ async def on_message(message):
                 for field in em.fields:
                     full_text += f"\n{field.name}\n{field.value}"
 
-        # Check each line for known car models
         lines = full_text.lower().splitlines()
         cleaned_lines = [line.translate(str.maketrans("", "", string.punctuation)) for line in lines]
 
@@ -686,18 +683,17 @@ async def on_message(message):
                     total_value += CAR_VALUES[model]
 
         if matched:
-            # Check if a recent checkticket covers this
+            print(f"🚨 Detected possible fraud: {matched} (${total_value})")
             valid = any(value >= total_value for ts, value in checkticket_logs if now - ts <= timedelta(minutes=10))
             if not valid:
                 embed = discord.Embed(
                     title="🚨 Fraud Alert",
-                    description=f"**Unmatched vehicle transfer**: {', '.join(matched)}\n**Total Value:** ${total_value}",
+                    description=f"**Unmatched vehicle transfer**\nModels: {', '.join(matched)}\n**Total Value:** ${total_value}",
                     color=discord.Color.red()
                 )
                 embed.add_field(name="User", value=f"{message.author} ({message.author.id})")
                 embed.add_field(name="Message", value=full_text[:1000], inline=False)
 
-                # ✅ DM owner
                 try:
                     owner = await bot.fetch_user(OWNER_ID)
                     if owner:
@@ -705,7 +701,6 @@ async def on_message(message):
                 except Exception as e:
                     print(f"❌ Failed to DM owner: {e}")
 
-                # ✅ Send to alert channel
                 try:
                     alert_channel = bot.get_channel(FRAUD_ALERT_CHANNEL)
                     if alert_channel:
@@ -714,6 +709,7 @@ async def on_message(message):
                     print(f"❌ Failed to post alert: {e}")
 
     await bot.process_commands(message)
+
 
 @bot.event
 async def on_message_delete(message):
