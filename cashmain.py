@@ -673,7 +673,11 @@ checkticket_logs = []
 async def on_message(message):
     now = datetime.utcnow()
 
-    # === Track checkticket commands ===
+    # ✅ Ignore bot messages
+    if message.author.bot:
+        return
+
+    # ✅ Track checkticket commands
     if message.content.startswith("!checkticket") or "$" in message.content:
         dollar_match = re.search(r"\$(\d+)", message.content)
         if dollar_match:
@@ -681,7 +685,7 @@ async def on_message(message):
             checkticket_logs.append((now, value))
             checkticket_logs[:] = [(t, v) for t, v in checkticket_logs if now - t <= timedelta(minutes=10)]
 
-    # === Fraud Monitor ===
+    # ✅ FRAUD DETECTION
     if message.channel.id == FRAUD_WATCH_CHANNEL:
         print("📥 Watching message in fraud channel...")
 
@@ -721,7 +725,6 @@ async def on_message(message):
                 embed.add_field(name="User", value=f"{message.author} ({message.author.id})")
                 embed.add_field(name="Message", value=full_text[:1000], inline=False)
 
-                # ✅ DM owner
                 try:
                     owner = await bot.fetch_user(OWNER_ID)
                     if owner:
@@ -729,7 +732,6 @@ async def on_message(message):
                 except Exception as e:
                     print(f"❌ Failed to DM owner: {e}")
 
-                # ✅ Send to fraud alert channel
                 try:
                     alert_channel = bot.get_channel(FRAUD_ALERT_CHANNEL)
                     if alert_channel:
@@ -737,6 +739,16 @@ async def on_message(message):
                 except Exception as e:
                     print(f"❌ Failed to post alert: {e}")
 
+    # ✅ BLACKLIST DETECTION (Ticket channel name match)
+    if re.match(r"^\w+-\d+$", message.channel.name):
+        if is_blacklisted(str(message.author.id)):
+            seller_notification = (
+                f"🚨 **Blacklisted User Alert**: {message.author.mention} (ID: {message.author.id}) "
+                f"tried to buy something in {message.channel.mention}."
+            )
+            await message.channel.send(seller_notification)
+
+    # ✅ Always process commands
     await bot.process_commands(message)
 
 
@@ -788,30 +800,7 @@ async def on_member_remove(member):
         log_channel = bot.get_channel(LOG_CHANNEL_ID)
         await log_channel.send(f"❌ `{member}` left or was removed from the dev server. ID: `{member.id}`")
 
-# 👁️ Monitors chat in the dev server
-@bot.event
-async def on_message(message):
-    if message.guild and message.guild.id == DEV_SERVER_ID:
-        if message.author.bot:
-            return
 
-        lowered = message.content.lower()
-
-        for word in FLAGGED_WORDS:
-            if word in lowered:
-                log_channel = bot.get_channel(LOG_CHANNEL_ID)
-                await log_channel.send(
-                    f"🚨 **Flagged Message Detected in Dev Server**\n"
-                    f"User: {message.author.mention} (`{message.author.id}`)\n"
-                    f"Channel: {message.channel.mention}\n"
-                    f"Content: ```{message.content}```"
-                )
-
-                # 🔒 Optionally delete the message:
-                # await message.delete()
-                break
-
-    await bot.process_commands(message)
 
 # 🧾 Manual audit command to list all current dev server members
 @bot.command(name="auditdev")
@@ -1419,12 +1408,7 @@ async def credit_check(ctx, user_id: str):
     except Exception as e:
         await ctx.send(f"❌ Error checking credit: {str(e)}")
 
-# Modify the on_message event to notify on ticket creation
-@bot.event
-async def on_message(message):
-    # Ignore messages from bots
-    if message.author.bot:
-        return
+
 
     # Check if the message is in a ticket channel
     if "ticket" in message.channel.name.lower():
@@ -1715,10 +1699,7 @@ MAX_CRASH_LOGS = 3
 ticket_stats = {}
 
 
-@bot.event
-async def on_message(message):
-    if message.author.bot:
-        return
+
 
     # Handle DM logging
     if isinstance(message.channel, discord.DMChannel):
@@ -2848,26 +2829,7 @@ async def blacklist_command(ctx, action: str, user_id: str = None):
 def is_blacklisted(user_id):
     return user_id in blacklist
 
-# Event: Detect messages in ticket channels
-@bot.event
-async def on_message(message):
-    # Ignore messages from bots
-    if message.author.bot:
-        return
 
-    # Check if the channel name matches a ticket format (e.g., "vehicle-1234", "support-5678")
-    if re.match(r"^\w+-\d+$", message.channel.name):
-        # Check if the user is blacklisted
-        if is_blacklisted(str(message.author.id)):
-            # Notify the seller
-            seller_notification = (
-                f"🚨 **Blacklisted User Alert**: {message.author.mention} (ID: {message.author.id}) "
-                f"tried to buy something in {message.channel.mention}."
-            )
-            await message.channel.send(seller_notification)
-
-    # Process commands
-    await bot.process_commands(message)
 
 @bot.command(name='emaillog')
 async def checkticket_log(ctx, amount: float, unread_only: bool = True):
