@@ -3028,11 +3028,12 @@ async def version_check(ctx):
                     inline=False)
     
     await ctx.send(embed=embed)
-
 @bot.command(name="blacklistban")
 @commands.is_owner()
 async def blacklist_ban(ctx, user_id: int):
-    """Ban a user from all servers the bot is in."""
+    """Ban a user from all servers the bot is in, except PSRP Dev."""
+    PSRP_DEV_SERVER_ID = 913635757401448448  # Replace with your dev server ID
+
     try:
         user = await bot.fetch_user(user_id)
         if not user:
@@ -3043,6 +3044,9 @@ async def blacklist_ban(ctx, user_id: int):
         failed = []
 
         for guild in bot.guilds:
+            if guild.id == PSRP_DEV_SERVER_ID:
+                continue  # ❌ Skip PSRP Dev server
+
             try:
                 await guild.ban(user, reason=f"Blacklisted by {ctx.author}", delete_message_days=0)
                 success += 1
@@ -3068,7 +3072,6 @@ async def blacklist_ban(ctx, user_id: int):
 
     except Exception as e:
         await ctx.send(f"❌ Error: {str(e)}")
-
 @bot.command(name='giftcardtotal')
 @commands.cooldown(1, 300, commands.BucketType.user)
 @commands.is_owner()
