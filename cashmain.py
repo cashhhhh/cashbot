@@ -642,11 +642,38 @@ FRAUD_ALERT_CHANNEL = 1362243005435740410
 OWNER_ID = 480028928329777163
 checkticket_logs = []
 
+from datetime import datetime, timedelta
+import re
+import string
+
+CAR_VALUES = {
+    "amloadinga": 10, "cccrazy": 10, "vanzs14": 0, "jtss": 10, "petedaycab/trailkinght": 8,
+    "dombeast": 30, "ruffgt40v2": 30, "rryosemite1500nlc": 30, "rryosemite1500nlc2": 30, "offdominatorcaracpd": 30,
+    "fgt86": 12, "donblaze": 12, "superfox2": 12, "ugc23h2r": 7, "loadingcamz1x": 10, "vanz23mloadingwb": 8,
+    "godzdrzrprolftd": 5, "loadinghy21": 8, "godzloadingwbv2": 7, "vanzch06": 7, "fcustmaro": 5, "loadingfen": 4,
+    "loadinggodz300uc": 4, "cumminscaddy": 3, "loadingvia": 3, "zaccdrag150weld": 5, "jacksubie": 5, "ccsttgloading": 5,
+    "razerdragmlovading": 5, "dragrtrstang": 5, "godztloading": 4, "godz69mav2": 5, "godzlctrdcencal": 4, "godza90drift": 5,
+    "bcr1drag": 4, "zacclowlind": 4, "gsstmp4": 5, "gstcs21b": 5, "bcsick7": 6, "loadingairwb": 4, "freebogemenzo": 3,
+    "plutomloading5": 4, "factisr35": 4, "jdmodelloading": 2, "godzevxdrift": 3, "ccvip": 5, "sou_loading_wb_8": 4,
+    "toraloadingden": 4, "loadinghe": 2, "godzkr23loadingmega": 4, "driftahbug": 3, "dillloading": 2, "jaws": 2,
+    "bcbuggyxl": 2, "godzd75loading4drsema": 5, "carteltrailerv2": 3, "loading450": 4, "bbmower": 3, "loadingyz": 4,
+    "burritopw": 3, "vetog": 2, "vetok": 2, "jloadingb": 2, "fakeyak": 1, "godzt12m": 3, "vbbpxxc": 4,
+    "godzd75loading4drsemakart": 5, "godzkarttrailer": 3, "mti": 2, "280z": 3, "godztcploading": 3, "godzxc1hovercraft": 2,
+    "335brm": 2, "loadduck": 2, "hippie": 5, "f117a": 50, "trudy": 50, "f22a": 50, "darkstar": 50,
+    "loading15s": 50, "f35c": 50, "hh60g": 50
+}
+
+FRAUD_WATCH_CHANNEL = 1361847485961601134
+FRAUD_ALERT_CHANNEL = 1362243005435740410
+OWNER_ID = 480028928329777163
+
+checkticket_logs = []
+
 @bot.event
 async def on_message(message):
     now = datetime.utcnow()
 
-    # === Track !checkticket commands ===
+    # === Track checkticket commands ===
     if message.content.startswith("!checkticket") or "$" in message.content:
         dollar_match = re.search(r"\$(\d+)", message.content)
         if dollar_match:
@@ -660,10 +687,8 @@ async def on_message(message):
 
         matched = []
         total_value = 0
-
         full_text = message.content or ""
 
-        # Grab from embed fields
         if message.embeds:
             for em in message.embeds:
                 if em.title:
@@ -677,10 +702,12 @@ async def on_message(message):
         cleaned_lines = [line.translate(str.maketrans("", "", string.punctuation)) for line in lines]
 
         for line in cleaned_lines:
-            for model in CAR_VALUES:
-                if model.lower() in line:
-                    matched.append(model)
-                    total_value += CAR_VALUES[model]
+            words = line.lower().split()
+            for word in words:
+                cleaned_word = word.strip()
+                if cleaned_word in CAR_VALUES:
+                    matched.append(cleaned_word)
+                    total_value += CAR_VALUES[cleaned_word]
 
         if matched:
             print(f"🚨 Detected possible fraud: {matched} (${total_value})")
@@ -694,6 +721,7 @@ async def on_message(message):
                 embed.add_field(name="User", value=f"{message.author} ({message.author.id})")
                 embed.add_field(name="Message", value=full_text[:1000], inline=False)
 
+                # ✅ DM owner
                 try:
                     owner = await bot.fetch_user(OWNER_ID)
                     if owner:
@@ -701,6 +729,7 @@ async def on_message(message):
                 except Exception as e:
                     print(f"❌ Failed to DM owner: {e}")
 
+                # ✅ Send to fraud alert channel
                 try:
                     alert_channel = bot.get_channel(FRAUD_ALERT_CHANNEL)
                     if alert_channel:
