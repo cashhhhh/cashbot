@@ -271,10 +271,22 @@ async def perform_repost():
             if msg.id in last_reposted_ids:
                 continue
 
-            content = msg.content or (msg.embeds[0].description if msg.embeds else "[No content]")
+            full_text = msg.content or ""
+
+            # Include full embed content if present
+            for em in msg.embeds:
+                if em.title:
+                    full_text += f"\n**{em.title}**"
+                if em.description:
+                    full_text += f"\n{em.description}"
+                for field in em.fields:
+                    full_text += f"\n**{field.name}**\n{field.value}"
+
+            full_text = full_text.strip() or "[No content]"
+
             embed = discord.Embed(
-                title="🔁 Repost",
-                description=content,
+                title="🔁 Repost from PSRP",
+                description=full_text[:4000],  # Embed limit safeguard
                 color=0x3498db
             )
 
