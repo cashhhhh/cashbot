@@ -615,23 +615,6 @@ async def on_guild_channel_create(channel):
         owner_mention = " ".join(f"<@{oid}>" for oid in COMMISSION_CONFIG['owner_ids'])
         await channel.send(f"{owner_mention} New commission claim started")
 
-# ✅ Fraud Detection + Repost + Check Ticket Value Tracker
-
-from datetime import datetime, timedelta
-import re
-
-# ✅ Fraud Detection + Repost + Check Ticket Value Tracker
-
-from datetime import datetime, timedelta
-import re
-
-# ✅ Fraud Detection + Repost + Check Ticket Value Tracker
-
-from datetime import datetime, timedelta
-import re
-import string
-
-# ✅ Fraud Detection + Repost + Check Ticket Value Tracker
 
 from datetime import datetime, timedelta
 import re
@@ -663,9 +646,6 @@ checkticket_logs = []
 
 @bot.event
 async def on_message(message):
-    if message.author.bot:
-        return
-
     content_lower = message.content.lower()
     now = datetime.utcnow()
 
@@ -683,22 +663,20 @@ async def on_message(message):
         matched = []
         total_value = 0
 
+        # Gather content + embed fields
         full_text = message.content or ""
 
-    if message.embeds:
-        for em in message.embeds:
-            if em.title:
-                full_text += f"
-{em.title}"
-            if em.description:
-                full_text += f"
-{em.description}"
-            for field in em.fields:
-                full_text += f"
-{field.name}
-{field.value}"
+        if message.embeds:
+            for em in message.embeds:
+                if em.title:
+                    full_text += f"\n{em.title}"
+                if em.description:
+                    full_text += f"\n{em.description}"
+                for field in em.fields:
+                    full_text += f"\n{field.name}\n{field.value}"
 
-    lines = full_text.lower().splitlines()
+        # Check each line for known car models
+        lines = full_text.lower().splitlines()
         cleaned_lines = [line.translate(str.maketrans("", "", string.punctuation)) for line in lines]
 
         for line in cleaned_lines:
@@ -717,7 +695,7 @@ async def on_message(message):
                     color=discord.Color.red()
                 )
                 embed.add_field(name="User", value=f"{message.author} ({message.author.id})")
-                embed.add_field(name="Message", value=message.content, inline=False)
+                embed.add_field(name="Message", value=full_text[:1000], inline=False)
 
                 # ✅ DM owner
                 try:
