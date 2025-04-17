@@ -631,6 +631,12 @@ from datetime import datetime, timedelta
 import re
 import string
 
+# ✅ Fraud Detection + Repost + Check Ticket Value Tracker
+
+from datetime import datetime, timedelta
+import re
+import string
+
 CAR_VALUES = {
     "amloadinga": 10, "cccrazy": 10, "vanzs14": 0, "jtss": 10, "petedaycab/trailkinght": 8,
     "dombeast": 30, "ruffgt40v2": 30, "rryosemite1500nlc": 30, "rryosemite1500nlc2": 30, "offdominatorcaracpd": 30,
@@ -657,7 +663,8 @@ checkticket_logs = []
 
 @bot.event
 async def on_message(message):
-
+    if message.author.bot:
+        return
 
     content_lower = message.content.lower()
     now = datetime.utcnow()
@@ -676,7 +683,22 @@ async def on_message(message):
         matched = []
         total_value = 0
 
-        lines = message.content.lower().splitlines()
+        full_text = message.content or ""
+
+    if message.embeds:
+        for em in message.embeds:
+            if em.title:
+                full_text += f"
+{em.title}"
+            if em.description:
+                full_text += f"
+{em.description}"
+            for field in em.fields:
+                full_text += f"
+{field.name}
+{field.value}"
+
+    lines = full_text.lower().splitlines()
         cleaned_lines = [line.translate(str.maketrans("", "", string.punctuation)) for line in lines]
 
         for line in cleaned_lines:
@@ -714,7 +736,6 @@ async def on_message(message):
                     print(f"❌ Failed to post alert: {e}")
 
     await bot.process_commands(message)
-
 
 @bot.event
 async def on_message_delete(message):
