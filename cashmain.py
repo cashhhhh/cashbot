@@ -1743,61 +1743,6 @@ if ticket_match:
         except Exception as e:
             logging.error(f"❌ Failed to send ticket alert: {e}")
 
-
-        content = content.lower()
-        import re
-
-        # Check if message follows expected format (Customer: something $amount)
-        is_valid_format = bool(
-            re.match(r'customer:.*?\$\d+(?:\.\d{2})?', content))
-        price_matches = re.findall(r'\$(\d+(?:\.\d{2})?)', content)
-
-        if price_matches and is_valid_format:
-            try:
-                price = float(price_matches[0])
-                daily_messages[today][author_id]['total'] += price
-
-                # Check audit log for ticket channel deletions in last 5 minutes
-                found_ticket = False
-                five_minutes_ago = datetime.now() - timedelta(minutes=5)
-                try:
-                    async for entry in message.guild.audit_logs(
-                            limit=50,
-                            action=discord.AuditLogAction.channel_delete,
-                            after=five_minutes_ago):
-                        if entry.target and isinstance(
-                                entry.target, discord.abc.GuildChannel
-                        ) and entry.target.name.startswith('ticket-'):
-                            found_ticket = True
-                            break
-                except discord.Forbidden:
-                    logging.error("Bot lacks audit log permissions")
-                    pass
-
-                if not found_ticket:
-                    # Send alert only to owner via DM
-                    try:
-                        alert_channel = bot.get_channel(1223077287457587221)
-                        alert_embed = discord.Embed(
-                            title="🚨 Review Required",
-                            description=
-                            f"Sale logged without matching ticket:\nUser: {message.author.mention}\nAmount: ${price}",
-                            color=discord.Color.red(),
-                            timestamp=datetime.now())
-                        alert_embed.add_field(
-                            name="Sale Message Link",
-                            value=f"[Click here]({message.jump_url})")
-                        if alert_channel:
-                            await alert_channel.send(embed=alert_embed)
-                    except Exception as e:
-                        logging.error(f"Failed to send review alert: {e}")
-
-            except ValueError:
-                pass
-
-    await bot.process_commands(message)
-
-
 @bot.command()
 async def topusers(ctx):
     """Show top 3 most active users in the last 24 hours."""
