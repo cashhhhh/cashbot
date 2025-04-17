@@ -298,11 +298,19 @@ async def manualrepost(ctx):
     await ctx.send("✅ Manual repost check complete.")
 
 
-
 @bot.event
 async def on_ready():
+    global start_time
+    start_time = time.time()
+
     print(f"✅ Logged in as {bot.user}")
-    auto_repost.start()
+    auto_repost.start()  # ← ✅ starts the repost loop
+    monitor_sales_activity.start()  # ← if you're using this too
+
+    # Optional: Update channel ping or logging
+    update_channel = bot.get_channel(1361849234550165618)
+    if update_channel:
+        await update_channel.send("🔄 **Bot restarted. Repost loop is active.**")
 
 
 
@@ -1559,11 +1567,6 @@ async def clearfraud(ctx, user: discord.User):
 start_time = None
 
 
-@bot.event
-async def on_ready():
-    global start_time
-    start_time = time.time()
-    logging.info(f'{bot.user} has connected to Discord!')
 
 
 # Store daily messages and crash logs
@@ -3412,14 +3415,6 @@ async def on_command_error(ctx, error):
     else:
         await ctx.send(f"⚠️ Error: {str(error)}")
 
-
-# Start monitoring when bot is ready
-@bot.event
-async def on_ready():
-    global start_time
-    start_time = time.time()
-    monitor_sales_activity.start()  # Start the monitoring loop
-    logging.info(f'{bot.user} has connected to Discord!')
 
     update_channel = bot.get_channel(1361849234550165618)
     if update_channel:
