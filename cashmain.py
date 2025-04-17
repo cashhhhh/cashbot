@@ -1723,7 +1723,7 @@ if ticket_match:
         pass
 
 
-           if not found_closure:
+      if not found_closure:
     try:
         alert_channel = bot.get_channel(1223077287457587221)
         alert_embed = discord.Embed(
