@@ -285,8 +285,10 @@ async def perform_repost():
     except Exception as e:
         print(f"❌ Error: {e}")
 
+
 @tasks.loop(seconds=10)
 async def auto_repost():
+    print("⏱️ Auto repost loop ticked")
     await perform_repost()
 
 @bot.command()
@@ -294,6 +296,8 @@ async def auto_repost():
 async def manualrepost(ctx):
     await perform_repost()
     await ctx.send("✅ Manual repost check complete.")
+
+
 
 @bot.event
 async def on_ready():
