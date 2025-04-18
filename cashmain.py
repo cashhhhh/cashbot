@@ -181,44 +181,29 @@ def get_emails_imap(guild_id, unread_only=True):
 
         for email_id in email_ids:
             # Fetch the email
-            res, msg = imap.fetch(email_id, "(RFC822)")
+            res, msg_data = imap.fetch(email_id, "(RFC822)")
             if res != "OK":
                 continue
 
             # Parse the email content
-            for response in msg:
+            for response in msg_data:
                 if isinstance(response, tuple):
                     msg = email.message_from_bytes(response[1])
 
-            subject, encoding = decode_header(msg["Subject"])[0]
-if isinstance(subject, bytes):
-    try:
-        subject = subject.decode(encoding if encoding else "utf-8")
-    except UnicodeDecodeError:
-        subject = subject.decode(encoding if encoding else "utf-8", errors="ignore")
+                    # Decode the email subject safely
+                    subject, encoding = decode_header(msg["Subject"])[0]
+                    if isinstance(subject, bytes):
+                        try:
+                            subject = subject.decode(encoding if encoding else "utf-8")
+                        except UnicodeDecodeError:
+                            subject = subject.decode(encoding if encoding else "utf-8", errors="ignore")
 
- 
-                    # Extract the email snippet
-                    if msg.is_multipart():
-                        snippet = ""
-                        for part in msg.walk():
-                            if part.get_content_type() == "text/plain":
-                                snippet = part.get_payload(
-                                    decode=True).decode()
-                                break
-                    else:
-                        snippet = msg.get_payload(decode=True).decode()
+                    # Do more with subject or body here if needed
+                    emails.append(subject)
 
-                    emails.append({
-                        "subject": subject,
-                        "snippet": snippet,
-                    })
-
-        # Close the connection
-        imap.close()
         imap.logout()
-
         return emails
+
     except Exception as e:
         logging.error(f"IMAP error for server {guild_id}: {e}")
         return []
