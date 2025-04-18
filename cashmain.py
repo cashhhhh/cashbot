@@ -190,13 +190,14 @@ def get_emails_imap(guild_id, unread_only=True):
                 if isinstance(response, tuple):
                     msg = email.message_from_bytes(response[1])
 
-                    # Decode the email subject
-                    subject, encoding = decode_header(msg["Subject"])[0]
-                    if isinstance(subject, bytes):
-                        # If it's a bytes type, decode to str
-                        subject = subject.decode(
-                            encoding if encoding else "utf-8")
+            subject, encoding = decode_header(msg["Subject"])[0]
+if isinstance(subject, bytes):
+    try:
+        subject = subject.decode(encoding if encoding else "utf-8")
+    except UnicodeDecodeError:
+        subject = subject.decode(encoding if encoding else "utf-8", errors="ignore")
 
+ 
                     # Extract the email snippet
                     if msg.is_multipart():
                         snippet = ""
