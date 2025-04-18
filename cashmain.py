@@ -3235,6 +3235,15 @@ async def on_member_join(member):
                 except Exception as e:
                     await alert_channel.send(f"⚠️ Kick failed for {member.mention}: {e}")
 
+
+
+
+
+import discord
+from discord.ext import commands
+from discord.ui import Button, View
+import re
+
 intents = discord.Intents.default()
 intents.messages = True
 intents.message_content = True
@@ -3244,8 +3253,8 @@ intents.guilds = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 # Configuration
-ROLE_REQUEST_CHANNEL_ID = 1362826410133295326 # Replace with your channel ID
-APPROVAL_CHANNEL_ID = 1362826388822036670      # Replace with your approval channel ID
+ROLE_REQUEST_CHANNEL_ID = 123456789  # Replace with your channel ID
+APPROVAL_CHANNEL_ID = 987654321      # Replace with your approval channel ID
 
 @bot.event
 async def on_ready():
@@ -3266,8 +3275,8 @@ async def on_message(message):
 def is_role_request(content):
     """Check if message follows the role request format"""
     lines = content.split('\n')
-    return (any(line.lower().startswith('name :') for line in lines) and \
-           (any(line.lower().startswith('roles needed :') for line in lines)
+    return (any(line.lower().startswith('name :') for line in lines) and 
+            any(line.lower().startswith('roles needed :') for line in lines))
 
 async def process_role_request(message):
     """Process role request and create approval message"""
@@ -3467,6 +3476,8 @@ async def handle_denial(interaction, original_msg):
         await original_msg.add_reaction("❌")
     except Exception as e:
         print(f"Denial error: {e}")
+
+
 
 
 
