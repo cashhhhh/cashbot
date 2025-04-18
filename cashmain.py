@@ -3234,24 +3234,26 @@ async def on_member_join(member):
                     await alert_channel.send(f"❌ Kicked {member.mention} (under {FLAG_AGE_DAYS} days old)")
                 except Exception as e:
                     await alert_channel.send(f"⚠️ Kick failed for {member.mention}: {e}")
+import discord
+from discord.ext import commands
+from discord.ui import Button, View
+import re
 
-    except Exception as e:
-        logging.error(f"Alt detector error: {str(e)}")
 intents = discord.Intents.default()
 intents.messages = True
 intents.message_content = True
-intents.members = True  # Needed for member operations
-intents.guilds = True   # Needed for role operations
+intents.members = True
+intents.guilds = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 # Configuration
-ROLE_REQUEST_CHANNEL_ID = 1362826410133295326  # Replace with your role request channel ID
-APPROVAL_CHANNEL_ID = 1362826388822036670      # Replace with your approval channel ID
+ROLE_REQUEST_CHANNEL_ID = 123456789  # Replace with your channel ID
+APPROVAL_CHANNEL_ID = 987654321      # Replace with your approval channel ID
 
 @bot.event
 async def on_ready():
-    print(f'Logged in as {bot.user} (ID: {bot.user.id})')
+    print(f'Bot ready: {bot.user.name} ({bot.user.id})')
     print('------')
 
 @bot.event
@@ -3259,135 +3261,217 @@ async def on_message(message):
     if message.author == bot.user:
         return
 
-    # Check if message is in the role request channel and follows the format
     if message.channel.id == ROLE_REQUEST_CHANNEL_ID:
-        if any(x in message.content.lower() for x in ["name:", "roles needed", "roles removed"]):
+        content_lower = message.content.lower()
+        if any(x in content_lower for x in ["name:", "roles needed", "roles removed"]):
             await process_role_request(message)
-
+    
     await bot.process_commands(message)
 
 async def process_role_request(message):
-    """Process a role request message and send it for approval"""
-    # Create buttons
-    approve_btn = Button(label="✅ Approve", style=discord.ButtonStyle.green, custom_id=f"approve_{message.id}")
-    deny_btn = Button(label="❌ Deny", style=discord.ButtonStyle.red, custom_id=f"deny_{message.id}")
-
-    view = View(timeout=None)
-    view.add_item(approve_btn)
-    view.add_item(deny_btn)
-
-    # Create embed
-    embed = discord.Embed(
-        title="🛠 Role Change Request",
-        description=f"```{message.content}```",
-        color=0x3498db
-    )
-    embed.add_field(name="Requested by", value=message.author.mention)
-    embed.add_field(name="Original Message", value=f"[Jump to Message]({message.jump_url})")
-
-    # Send to approval channel
-    approval_channel = bot.get_channel(APPROVAL_CHANNEL_ID)
-    if approval_channel:
-        await approval_channel.send(
-            content=f"New role request from {message.author.mention}",
-            embed=embed,
-            view=view
+    """Process role request and create approval message"""
+    try:
+        # Create action buttons
+        approve_btn = Button(label="✅ Approve", style=discord.ButtonStyle.green, custom_id=f"approve_{message.id}")
+        deny_btn = Button(label="❌ Deny", style=discord.ButtonStyle.red, custom_id=f"deny_{message.id}")
+        
+        view = View(timeout=None)
+        view.add_item(approve_btn)
+        view.add_item(deny_btn)
+        
+        # Create approval embed
+        embed = discord.Embed(
+            title="🛠 Role Change Request",
+            description=f"```{message.content}```",
+            color=0x3498db
         )
+        embed.add_field(name="Requested by", value=message.author.mention)
+        embed.add_field(name="Original Message", value=f"[Jump to Message]({message.jump_url})")
+        
+        # Send to approval channel
+        approval_channel = bot.get_channel(APPROVAL_CHANNEL_ID)
+        if approval_channel:
+            await approval_channel.send(
+                content=f"New role request from {message.author.mention}",
+                embed=embed,
+                view=view
+            )
+    except Exception as e:
+        print(f"Error processing request: {e}")
 
 @bot.event
 async def on_interaction(interaction):
     try:
         if interaction.type == discord.InteractionType.component:
             custom_id = interaction.data.get("custom_id", "")
-
+            
             if custom_id.startswith(("approve_", "deny_")):
-                # Parse the original message ID
                 action, message_id = custom_id.split("_")
                 message_id = int(message_id)
-
-                # Get the original message
+                
                 channel = bot.get_channel(ROLE_REQUEST_CHANNEL_ID)
                 try:
                     original_msg = await channel.fetch_message(message_id)
-
+                    
                     if action == "approve":
                         await handle_approval(interaction, original_msg)
                     else:
                         await handle_denial(interaction, original_msg)
-
-                    # Disable the buttons
-                    for item in interaction.message.components[0].children:
-                        item.disabled = True
-
+                        
+                    # Disable buttons after action
+                    for component in interaction.message.components:
+                        for item in component.children:
+                            item.disabled = True
+                    
                     await interaction.message.edit(view=interaction.message.view)
-
+                    
                 except discord.NotFound:
                     await interaction.response.send_message("Original message not found!", ephemeral=True)
     except Exception as e:
-        print(f"Error in interaction: {e}")
+        print(f"Interaction error: {e}")
+        if not interaction.response.is_done():
+            await interaction.response.send_message(f"An error occurred: {str(e)}", ephemeral=True)
 
 async def handle_approval(interaction, original_msg):
-    """Process an approval action using role names"""
-    content = original_msg.content
-    member = await extract_member(original_msg)
-
-    if not member:
-        await interaction.response.send_message("Couldn't find the member mentioned!", ephemeral=True)
-        return
-
+    """Handle approval with support for both role names and IDs"""
     try:
+        content = original_msg.content
+        member = await extract_member(original_msg)
+        
+        if not member:
+            await interaction.response.send_message("Couldn't find the member mentioned!", ephemeral=True)
+            return
+        
+        added_roles = []
+        removed_roles = []
+        
         # Process roles to add
-        if "roles needed" in content.lower() or "roles needed:" in content.lower():
-            role_text = content.split("roles needed")[1].split("\n")[0]
-            roles_to_add = extract_roles(role_text)
-            for role_name in roles_to_add:
-                role = discord.utils.get(interaction.guild.roles, name=role_name.strip())
-                if role:
-                    await member.add_roles(role)
-                else:
-                    print(f"Role not found: {role_name}")
-
+        if "roles needed" in content.lower():
+            role_section = get_role_section(content, "roles needed")
+            if role_section:
+                roles_to_add = extract_roles(role_section)
+                for role_identifier in roles_to_add:
+                    role = await get_role(interaction.guild, role_identifier)
+                    if role:
+                        await member.add_roles(role)
+                        added_roles.append(role.name)
+                    else:
+                        print(f"Role not found: {role_identifier}")
+        
         # Process roles to remove
-        if "roles removed" in content.lower() or "roles removed:" in content.lower():
-            role_text = content.split("roles removed")[1].split("\n")[0]
-            roles_to_remove = extract_roles(role_text)
-            for role_name in roles_to_remove:
-                role = discord.utils.get(interaction.guild.roles, name=role_name.strip())
-                if role:
-                    await member.remove_roles(role)
-                else:
-                    print(f"Role not found: {role_name}")
-
-        await interaction.response.send_message("✅ Request approved and roles updated!", ephemeral=True)
+        if "roles removed" in content.lower():
+            role_section = get_role_section(content, "roles removed")
+            if role_section:
+                roles_to_remove = extract_roles(role_section)
+                for role_identifier in roles_to_remove:
+                    role = await get_role(interaction.guild, role_identifier)
+                    if role:
+                        await member.remove_roles(role)
+                        removed_roles.append(role.name)
+                    else:
+                        print(f"Role not found: {role_identifier}")
+        
+        # Build result message
+        result_msg = "✅ Request approved!\n"
+        if added_roles:
+            result_msg += f"Added roles: {', '.join(added_roles)}\n"
+        if removed_roles:
+            result_msg += f"Removed roles: {', '.join(removed_roles)}"
+        
+        await interaction.response.send_message(result_msg, ephemeral=True)
         await original_msg.add_reaction("✅")
+        
     except Exception as e:
-        await interaction.response.send_message(f"❌ Error processing approval: {e}", ephemeral=True)
-        print(f"Approval error: {e}")
+        error_msg = f"❌ Error processing approval: {str(e)}"
+        print(error_msg)
+        if not interaction.response.is_done():
+            await interaction.response.send_message(error_msg, ephemeral=True)
+
+async def get_role(guild, identifier):
+    """Get role by either name or ID"""
+    try:
+        # Try to parse as role ID first
+        if re.match(r'^\d+$', str(identifier).strip()):
+            role_id = int(identifier)
+            role = guild.get_role(role_id)
+            if role:
+                return role
+        
+        # Fall back to name lookup
+        return discord.utils.get(guild.roles, name=str(identifier).strip())
+    except:
+        return None
 
 async def handle_denial(interaction, original_msg):
-    """Process a denial action"""
-    await interaction.response.send_message("Request denied!", ephemeral=True)
-    await original_msg.add_reaction("❌")
+    """Handle request denial"""
+    try:
+        await interaction.response.send_message("Request denied!", ephemeral=True)
+        await original_msg.add_reaction("❌")
+    except Exception as e:
+        print(f"Denial error: {e}")
+
+def get_role_section(content, section_name):
+    """Safely extract role section from content"""
+    try:
+        parts = content.lower().split(section_name.lower())
+        if len(parts) > 1:
+            section = parts[1].split("\n")[0]
+            return section.strip()
+        return None
+    except:
+        return None
 
 def extract_roles(role_text):
-    """Extract role names from the role text"""
-    role_text = role_text.replace(":", "").replace("n/a", "").replace("N/A", "").strip()
-    if not role_text or role_text.lower() == "none":
+    """Extract roles from text with robust handling"""
+    if not role_text:
         return []
-    return [r.strip() for r in role_text.split(",") if r.strip()]
+    
+    # Clean the text
+    role_text = role_text.replace(":", "").strip()
+    if role_text.lower() in ["n/a", "none", "na", ""]:
+        return []
+    
+    # Handle different separators
+    roles = []
+    for part in role_text.split(","):
+        part = part.strip()
+        if part and part.lower() not in ["n/a", "none"]:
+            roles.append(part)
+    
+    return roles
 
 async def extract_member(message):
-    """Extract member mention from message content"""
-    for word in message.content.split():
-        if word.startswith("<@") and word.endswith(">"):
-            user_id = word[2:-1]
-            if user_id.startswith("!"):  # For nickname mentions
-                user_id = user_id[1:]
-            try:
-                return await message.guild.fetch_member(int(user_id))
-            except (discord.NotFound, discord.HTTPException, ValueError):
-                continue
-    return None
+    """Extract member from message with multiple fallbacks"""
+    try:
+        # Check mentions first
+        if message.mentions:
+            return message.mentions[0]
+        
+        # Fallback to content parsing
+        for word in message.content.split():
+            if word.startswith("<@") and word.endswith(">"):
+                user_id = word[2:-1]
+                if user_id.startswith("!"):  # Nickname mention
+                    user_id = user_id[1:]
+                try:
+                    return await message.guild.fetch_member(int(user_id))
+                except:
+                    continue
+        
+        # Try to find by username
+        for line in message.content.split("\n"):
+            if line.lower().startswith("name:"):
+                name_part = line[5:].strip()
+                if name_part.startswith("@"):
+                    name_part = name_part[1:]
+                member = discord.utils.find(lambda m: name_part.lower() in str(m).lower(), message.guild.members)
+                if member:
+                    return member
+                
+        return None
+    except Exception as e:
+        print(f"Error extracting member: {e}")
+        return None
 
 
 @bot.command(name='audit')
