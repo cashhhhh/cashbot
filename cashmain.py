@@ -152,24 +152,17 @@ async def evaluate_application(message):
 def get_emails_imap(guild_id, unread_only=True):
     """Fetch emails using IMAP for a specific server."""
     try:
-        # Get server-specific configuration
         server_config = config.get(str(guild_id))
         if not server_config:
             logging.error(f"No configuration found for server {guild_id}")
             return []
 
-        # Connect to Gmail's IMAP server
         imap = imaplib.IMAP4_SSL("imap.gmail.com")
-
-        # Login to the Gmail account using server-specific credentials
         EMAIL = server_config['gmail']
         PASSWORD = server_config['app_password']
         imap.login(EMAIL, PASSWORD)
-
-        # Select the mailbox
         imap.select("inbox")
 
-        # Search for emails
         criteria = 'UNSEEN' if unread_only else 'ALL'
         status, messages = imap.search(None, criteria)
 
@@ -180,17 +173,15 @@ def get_emails_imap(guild_id, unread_only=True):
         emails = []
 
         for email_id in email_ids:
-            # Fetch the email
             res, msg_data = imap.fetch(email_id, "(RFC822)")
             if res != "OK":
                 continue
 
-            # Parse the email content
             for response in msg_data:
                 if isinstance(response, tuple):
                     msg = email.message_from_bytes(response[1])
 
-                    # Decode the email subject safely
+                    # SUBJECT
                     subject, encoding = decode_header(msg["Subject"])[0]
                     if isinstance(subject, bytes):
                         try:
@@ -198,8 +189,38 @@ def get_emails_imap(guild_id, unread_only=True):
                         except UnicodeDecodeError:
                             subject = subject.decode(encoding if encoding else "utf-8", errors="ignore")
 
-                    # Do more with subject or body here if needed
-                    emails.append(subject)
+                    # FROM
+                    from_ = msg.get("From")
+
+                    # DATE
+                    date_ = msg.get("Date")
+
+                    # BODY (text/plain only, ignore HTML)
+                    body = ""
+                    if msg.is_multipart():
+                        for part in msg.walk():
+                            if part.get_content_type() == "text/plain" and not part.get("Content-Disposition"):
+                                payload = part.get_payload(decode=True)
+                                if payload:
+                                    try:
+                                        body = payload.decode("utf-8")
+                                    except UnicodeDecodeError:
+                                        body = payload.decode("utf-8", errors="ignore")
+                                    break
+                    else:
+                        payload = msg.get_payload(decode=True)
+                        if payload:
+                            try:
+                                body = payload.decode("utf-8")
+                            except UnicodeDecodeError:
+                                body = payload.decode("utf-8", errors="ignore")
+
+                    emails.append({
+                        "subject": subject,
+                        "from": from_,
+                        "date": date_,
+                        "body": body.strip()
+                    })
 
         imap.logout()
         return emails
