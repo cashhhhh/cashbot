@@ -3234,10 +3234,6 @@ async def on_member_join(member):
                     await alert_channel.send(f"❌ Kicked {member.mention} (under {FLAG_AGE_DAYS} days old)")
                 except Exception as e:
                     await alert_channel.send(f"⚠️ Kick failed for {member.mention}: {e}")
-import discord
-from discord.ext import commands
-from discord.ui import Button, View
-import re
 
 intents = discord.Intents.default()
 intents.messages = True
