@@ -2567,6 +2567,57 @@ async def setup(ctx):
     # await bot.start(DISCORD_TOKEN)
 
 
+@bot.command(name='reconfigure')
+async def reconfigure(ctx):
+    """Update the bot settings for this server."""
+    def check(m):
+        return m.author == ctx.author and m.channel == ctx.channel
+
+    # If the server hasn't been configured yet
+    if str(ctx.guild.id) not in config:
+        await ctx.send("This server hasn't been configured yet. Use `!setup` first.")
+        return
+
+    await ctx.send("Let's update your configuration. Leave any field blank to keep the current value.")
+
+    current = config[str(ctx.guild.id)]
+
+    # Prompt for Owner ID
+    await ctx.send(f"Current Owner ID: `{current['owner_id']}`\nEnter new Owner ID or leave blank:")
+    owner_id_msg = await bot.wait_for('message', check=check)
+    owner_id = owner_id_msg.content or current['owner_id']
+
+    # Prompt for Gmail
+    await ctx.send(f"Current Gmail: `{current['gmail']}`\nEnter new Gmail or leave blank:")
+    gmail_msg = await bot.wait_for('message', check=check)
+    gmail = gmail_msg.content or current['gmail']
+
+    # Prompt for Gmail App Password
+    await ctx.send(f"Current App Password: (hidden)\nEnter new App Password or leave blank:")
+    app_password_msg = await bot.wait_for('message', check=check)
+    app_password = app_password_msg.content or current['app_password']
+
+    # Prompt for CheckTicket Role ID
+    await ctx.send(f"Current CheckTicket Role ID: `{current['checkticket_role_id']}`\nEnter new Role ID or leave blank:")
+    checkticket_role_id_msg = await bot.wait_for('message', check=check)
+    checkticket_role_id = checkticket_role_id_msg.content or current['checkticket_role_id']
+
+    # Update config
+    config[str(ctx.guild.id)] = {
+        'owner_id': owner_id,
+        'gmail': gmail,
+        'app_password': app_password,
+        'checkticket_role_id': checkticket_role_id
+    }
+
+    # Save to file
+    with open('config.json', 'w') as f:
+        json.dump(config, f, indent=4)
+
+    await ctx.send("✅ Server reconfiguration complete.")
+
+
+
 # File to store blacklisted users
 BLACKLIST_FILE = "blacklist.json"
 
