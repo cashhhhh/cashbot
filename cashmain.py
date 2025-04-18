@@ -4,6 +4,7 @@
 
 
 
+
 import re
 import os
 import pickle
@@ -152,17 +153,24 @@ async def evaluate_application(message):
 def get_emails_imap(guild_id, unread_only=True):
     """Fetch emails using IMAP for a specific server."""
     try:
+        # Get server-specific configuration
         server_config = config.get(str(guild_id))
         if not server_config:
             logging.error(f"No configuration found for server {guild_id}")
             return []
 
+        # Connect to Gmail's IMAP server
         imap = imaplib.IMAP4_SSL("imap.gmail.com")
+
+        # Login to the Gmail account using server-specific credentials
         EMAIL = server_config['gmail']
         PASSWORD = server_config['app_password']
         imap.login(EMAIL, PASSWORD)
+
+        # Select the mailbox
         imap.select("inbox")
 
+        # Search for emails
         criteria = 'UNSEEN' if unread_only else 'ALL'
         status, messages = imap.search(None, criteria)
 
@@ -173,58 +181,44 @@ def get_emails_imap(guild_id, unread_only=True):
         emails = []
 
         for email_id in email_ids:
-            res, msg_data = imap.fetch(email_id, "(RFC822)")
+            # Fetch the email
+            res, msg = imap.fetch(email_id, "(RFC822)")
             if res != "OK":
                 continue
 
-            for response in msg_data:
+            # Parse the email content
+            for response in msg:
                 if isinstance(response, tuple):
                     msg = email.message_from_bytes(response[1])
 
-                    # SUBJECT
+                    # Decode the email subject
                     subject, encoding = decode_header(msg["Subject"])[0]
                     if isinstance(subject, bytes):
-                        try:
-                            subject = subject.decode(encoding if encoding else "utf-8")
-                        except UnicodeDecodeError:
-                            subject = subject.decode(encoding if encoding else "utf-8", errors="ignore")
+                        # If it's a bytes type, decode to str
+                        subject = subject.decode(
+                            encoding if encoding else "utf-8")
 
-                    # FROM
-                    from_ = msg.get("From")
-
-                    # DATE
-                    date_ = msg.get("Date")
-
-                    # BODY (text/plain only, ignore HTML)
-                    body = ""
+                    # Extract the email snippet
                     if msg.is_multipart():
+                        snippet = ""
                         for part in msg.walk():
-                            if part.get_content_type() == "text/plain" and not part.get("Content-Disposition"):
-                                payload = part.get_payload(decode=True)
-                                if payload:
-                                    try:
-                                        body = payload.decode("utf-8")
-                                    except UnicodeDecodeError:
-                                        body = payload.decode("utf-8", errors="ignore")
-                                    break
+                            if part.get_content_type() == "text/plain":
+                                snippet = part.get_payload(
+                                    decode=True).decode()
+                                break
                     else:
-                        payload = msg.get_payload(decode=True)
-                        if payload:
-                            try:
-                                body = payload.decode("utf-8")
-                            except UnicodeDecodeError:
-                                body = payload.decode("utf-8", errors="ignore")
+                        snippet = msg.get_payload(decode=True).decode()
 
                     emails.append({
                         "subject": subject,
-                        "from": from_,
-                        "date": date_,
-                        "body": body.strip()
+                        "snippet": snippet,
                     })
 
+        # Close the connection
+        imap.close()
         imap.logout()
-        return emails
 
+        return emails
     except Exception as e:
         logging.error(f"IMAP error for server {guild_id}: {e}")
         return []
@@ -2574,57 +2568,6 @@ async def setup(ctx):
     # await bot.start(DISCORD_TOKEN)
 
 
-@bot.command(name='reconfigure')
-async def reconfigure(ctx):
-    """Update the bot settings for this server."""
-    def check(m):
-        return m.author == ctx.author and m.channel == ctx.channel
-
-    # If the server hasn't been configured yet
-    if str(ctx.guild.id) not in config:
-        await ctx.send("This server hasn't been configured yet. Use `!setup` first.")
-        return
-
-    await ctx.send("Let's update your configuration. Leave any field blank to keep the current value.")
-
-    current = config[str(ctx.guild.id)]
-
-    # Prompt for Owner ID
-    await ctx.send(f"Current Owner ID: `{current['owner_id']}`\nEnter new Owner ID or leave blank:")
-    owner_id_msg = await bot.wait_for('message', check=check)
-    owner_id = owner_id_msg.content or current['owner_id']
-
-    # Prompt for Gmail
-    await ctx.send(f"Current Gmail: `{current['gmail']}`\nEnter new Gmail or leave blank:")
-    gmail_msg = await bot.wait_for('message', check=check)
-    gmail = gmail_msg.content or current['gmail']
-
-    # Prompt for Gmail App Password
-    await ctx.send(f"Current App Password: (hidden)\nEnter new App Password or leave blank:")
-    app_password_msg = await bot.wait_for('message', check=check)
-    app_password = app_password_msg.content or current['app_password']
-
-    # Prompt for CheckTicket Role ID
-    await ctx.send(f"Current CheckTicket Role ID: `{current['checkticket_role_id']}`\nEnter new Role ID or leave blank:")
-    checkticket_role_id_msg = await bot.wait_for('message', check=check)
-    checkticket_role_id = checkticket_role_id_msg.content or current['checkticket_role_id']
-
-    # Update config
-    config[str(ctx.guild.id)] = {
-        'owner_id': owner_id,
-        'gmail': gmail,
-        'app_password': app_password,
-        'checkticket_role_id': checkticket_role_id
-    }
-
-    # Save to file
-    with open('config.json', 'w') as f:
-        json.dump(config, f, indent=4)
-
-    await ctx.send("✅ Server reconfiguration complete.")
-
-
-
 # File to store blacklisted users
 BLACKLIST_FILE = "blacklist.json"
 
@@ -2691,6 +2634,63 @@ def is_blacklisted(user_id):
 
 
 
+@bot.command(name='emaillog')
+async def checkticket_log(ctx, amount: float, unread_only: bool = True):
+    """Check for emails and log their details (Owner only)"""
+    try:
+        # Permission check (Owner only)
+        if str(ctx.author.id) not in OWNER_IDS:
+            await ctx.send("⛔ This command is restricted to bot owners.")
+            return
+
+        # Get server-specific configuration
+        server_config = config.get(str(ctx.guild.id))
+        if not server_config:
+            await ctx.send("❌ Server not configured! Use `!setup` first.")
+            return
+
+        # Fetch emails
+        emails = get_emails_imap(ctx.guild.id, unread_only)
+        if not emails:
+            await ctx.send("📭 No emails found.")
+            return
+
+        # Filter emails by amount
+        matching_emails = [email for email in emails if f"${amount:.2f}" in email['snippet']]
+
+        if not matching_emails:
+            await ctx.send(f"❌ No emails found for ${amount:.2f}.")
+            return
+
+        # Create log embed
+        log_embed = discord.Embed(
+            title=f"📧 Email Log for ${amount:.2f}",
+            description=f"Found {len(matching_emails)} matching emails.",
+            color=discord.Color.blue()
+        )
+
+        # Add email details to embed
+        for i, email in enumerate(matching_emails[:10]):  # Limit to first 10 emails
+            log_embed.add_field(
+                name=f"Email {i + 1}: {email['subject']}",
+                value=f"```{email['snippet'][:500]}...```",  # Limit snippet length
+                inline=False
+            )
+
+        # Send log embed
+        await ctx.send(embed=log_embed)
+
+        # Log to file for debugging
+        with open('email_log.txt', 'a') as log_file:
+            log_file.write(f"\n=== Email Log for ${amount:.2f} at {datetime.now()} ===\n")
+            for email in matching_emails:
+                log_file.write(f"Subject: {email['subject']}\n")
+                log_file.write(f"Snippet: {email['snippet']}\n")
+                log_file.write("-" * 50 + "\n")
+
+    except Exception as e:
+        await ctx.send("❌ An error occurred while fetching emails.")
+        logging.error(f"Checkticket log error: {str(e)}")
 
 @bot.command(name='printroleids')
 async def print_role_ids(ctx):
