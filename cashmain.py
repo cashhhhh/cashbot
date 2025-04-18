@@ -3248,8 +3248,8 @@ intents.guilds = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 # Configuration
-ROLE_REQUEST_CHANNEL_ID = 123456789  # Replace with your channel ID
-APPROVAL_CHANNEL_ID = 987654321      # Replace with your approval channel ID
+ROLE_REQUEST_CHANNEL_ID = 1362826410133295326 # Replace with your channel ID
+APPROVAL_CHANNEL_ID = 1362826388822036670      # Replace with your approval channel ID
 
 @bot.event
 async def on_ready():
@@ -3262,11 +3262,16 @@ async def on_message(message):
         return
 
     if message.channel.id == ROLE_REQUEST_CHANNEL_ID:
-        content_lower = message.content.lower()
-        if any(x in content_lower for x in ["name:", "roles needed", "roles removed"]):
+        if is_role_request(message.content):
             await process_role_request(message)
     
     await bot.process_commands(message)
+
+def is_role_request(content):
+    """Check if message follows the role request format"""
+    lines = content.split('\n')
+    return (any(line.lower().startswith('name :') for line in lines) and \
+           (any(line.lower().startswith('roles needed :') for line in lines)
 
 async def process_role_request(message):
     """Process role request and create approval message"""
@@ -3285,14 +3290,12 @@ async def process_role_request(message):
             description=f"```{message.content}```",
             color=0x3498db
         )
-        embed.add_field(name="Requested by", value=message.author.mention)
-        embed.add_field(name="Original Message", value=f"[Jump to Message]({message.jump_url})")
+        embed.set_footer(text=f"Requested by {message.author.display_name}")
         
         # Send to approval channel
         approval_channel = bot.get_channel(APPROVAL_CHANNEL_ID)
         if approval_channel:
             await approval_channel.send(
-                content=f"New role request from {message.author.mention}",
                 embed=embed,
                 view=view
             )
@@ -3345,31 +3348,30 @@ async def handle_approval(interaction, original_msg):
         added_roles = []
         removed_roles = []
         
-        # Process roles to add
-        if "roles needed" in content.lower():
-            role_section = get_role_section(content, "roles needed")
-            if role_section:
-                roles_to_add = extract_roles(role_section)
-                for role_identifier in roles_to_add:
-                    role = await get_role(interaction.guild, role_identifier)
-                    if role:
-                        await member.add_roles(role)
-                        added_roles.append(role.name)
-                    else:
-                        print(f"Role not found: {role_identifier}")
-        
-        # Process roles to remove
-        if "roles removed" in content.lower():
-            role_section = get_role_section(content, "roles removed")
-            if role_section:
-                roles_to_remove = extract_roles(role_section)
-                for role_identifier in roles_to_remove:
-                    role = await get_role(interaction.guild, role_identifier)
-                    if role:
-                        await member.remove_roles(role)
-                        removed_roles.append(role.name)
-                    else:
-                        print(f"Role not found: {role_identifier}")
+        # Process each request in the message
+        requests = split_requests(content)
+        for request in requests:
+            # Process roles to add
+            if "roles needed :" in request.lower():
+                role_text = extract_field(request, "roles needed :")
+                if role_text:
+                    roles_to_add = parse_roles(role_text)
+                    for role_identifier in roles_to_add:
+                        role = await get_role(interaction.guild, role_identifier)
+                        if role:
+                            await member.add_roles(role)
+                            added_roles.append(role.name)
+            
+            # Process roles to remove
+            if "roles removed :" in request.lower():
+                role_text = extract_field(request, "roles removed :")
+                if role_text:
+                    roles_to_remove = parse_roles(role_text)
+                    for role_identifier in roles_to_remove:
+                        role = await get_role(interaction.guild, role_identifier)
+                        if role:
+                            await member.remove_roles(role)
+                            removed_roles.append(role.name)
         
         # Build result message
         result_msg = "✅ Request approved!\n"
@@ -3377,6 +3379,9 @@ async def handle_approval(interaction, original_msg):
             result_msg += f"Added roles: {', '.join(added_roles)}\n"
         if removed_roles:
             result_msg += f"Removed roles: {', '.join(removed_roles)}"
+        
+        if not added_roles and not removed_roles:
+            result_msg = "✅ Request processed (no roles changed)"
         
         await interaction.response.send_message(result_msg, ephemeral=True)
         await original_msg.add_reaction("✅")
@@ -3387,20 +3392,77 @@ async def handle_approval(interaction, original_msg):
         if not interaction.response.is_done():
             await interaction.response.send_message(error_msg, ephemeral=True)
 
+def split_requests(content):
+    """Split message content into individual requests"""
+    requests = []
+    current_request = []
+    
+    for line in content.split('\n'):
+        if line.strip() == "":
+            continue
+        if line.lower().startswith('name :') and current_request:
+            requests.append('\n'.join(current_request))
+            current_request = []
+        current_request.append(line)
+    
+    if current_request:
+        requests.append('\n'.join(current_request))
+    
+    return requests
+
+def extract_field(request, field_name):
+    """Extract the value of a specific field from a request"""
+    lines = request.split('\n')
+    for line in lines:
+        if line.lower().startswith(field_name.lower()):
+            return line[len(field_name):].strip()
+    return None
+
+def parse_roles(role_text):
+    """Parse role text into individual role identifiers"""
+    if not role_text or role_text.lower() in ["n/a", "none"]:
+        return []
+    
+    # Handle cases where multiple roles might be separated by commas
+    roles = [r.strip() for r in role_text.split(',') if r.strip()]
+    return roles
+
 async def get_role(guild, identifier):
     """Get role by either name or ID"""
-    try:
-        # Try to parse as role ID first
-        if re.match(r'^\d+$', str(identifier).strip()):
-            role_id = int(identifier)
-            role = guild.get_role(role_id)
-            if role:
-                return role
-        
-        # Fall back to name lookup
-        return discord.utils.get(guild.roles, name=str(identifier).strip())
-    except:
-        return None
+    identifier = str(identifier).strip()
+    
+    # Try to parse as role ID first
+    if re.match(r'^\d+$', identifier):
+        role_id = int(identifier)
+        role = guild.get_role(role_id)
+        if role:
+            return role
+    
+    # Fall back to name lookup
+    return discord.utils.get(guild.roles, name=identifier)
+
+async def extract_member(message):
+    """Extract member from message"""
+    # Check mentions first
+    if message.mentions:
+        return message.mentions[0]
+    
+    # Fallback to parsing the name line
+    for line in message.content.split('\n'):
+        if line.lower().startswith('name :'):
+            name_part = line[6:].strip()  # Remove "Name :"
+            if name_part.startswith('@'):
+                name_part = name_part[1:]
+            
+            # Try to find member by name or nickname
+            member = discord.utils.find(
+                lambda m: name_part.lower() in (m.name.lower(), m.display_name.lower(), str(m).lower()),
+                message.guild.members
+            )
+            if member:
+                return member
+    
+    return None
 
 async def handle_denial(interaction, original_msg):
     """Handle request denial"""
@@ -3410,68 +3472,7 @@ async def handle_denial(interaction, original_msg):
     except Exception as e:
         print(f"Denial error: {e}")
 
-def get_role_section(content, section_name):
-    """Safely extract role section from content"""
-    try:
-        parts = content.lower().split(section_name.lower())
-        if len(parts) > 1:
-            section = parts[1].split("\n")[0]
-            return section.strip()
-        return None
-    except:
-        return None
 
-def extract_roles(role_text):
-    """Extract roles from text with robust handling"""
-    if not role_text:
-        return []
-    
-    # Clean the text
-    role_text = role_text.replace(":", "").strip()
-    if role_text.lower() in ["n/a", "none", "na", ""]:
-        return []
-    
-    # Handle different separators
-    roles = []
-    for part in role_text.split(","):
-        part = part.strip()
-        if part and part.lower() not in ["n/a", "none"]:
-            roles.append(part)
-    
-    return roles
-
-async def extract_member(message):
-    """Extract member from message with multiple fallbacks"""
-    try:
-        # Check mentions first
-        if message.mentions:
-            return message.mentions[0]
-        
-        # Fallback to content parsing
-        for word in message.content.split():
-            if word.startswith("<@") and word.endswith(">"):
-                user_id = word[2:-1]
-                if user_id.startswith("!"):  # Nickname mention
-                    user_id = user_id[1:]
-                try:
-                    return await message.guild.fetch_member(int(user_id))
-                except:
-                    continue
-        
-        # Try to find by username
-        for line in message.content.split("\n"):
-            if line.lower().startswith("name:"):
-                name_part = line[5:].strip()
-                if name_part.startswith("@"):
-                    name_part = name_part[1:]
-                member = discord.utils.find(lambda m: name_part.lower() in str(m).lower(), message.guild.members)
-                if member:
-                    return member
-                
-        return None
-    except Exception as e:
-        print(f"Error extracting member: {e}")
-        return None
 
 
 @bot.command(name='audit')
