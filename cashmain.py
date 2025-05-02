@@ -1097,15 +1097,20 @@ user_training_sessions = {}
 async def global_unban(ctx, user_id: int):
     """Unban a user from ALL servers the bot is in and politely DM them."""
     results = []
-    user_object = discord.Object(id=user_id)
+
+    try:
+        user = await bot.fetch_user(user_id)  # Fetch full User object at the start
+    except Exception as e:
+        await ctx.send(f"❌ Failed to fetch user: {e}")
+        return
 
     for guild in bot.guilds:
         try:
             bans = await guild.bans()
             banned_users = [ban_entry.user for ban_entry in bans]
 
-            if any(bu.id == user_id for bu in banned_users):
-                await guild.unban(user_object)
+            if any(bu.id == user.id for bu in banned_users):
+                await guild.unban(user)
                 results.append(f"✅ {guild.name}: Unbanned successfully")
             else:
                 results.append(f"❌ {guild.name}: User was not banned")
@@ -1115,7 +1120,6 @@ async def global_unban(ctx, user_id: int):
 
     # Try to DM the user after unbanning
     try:
-        user = await bot.fetch_user(user_id)
         if user:
             dm_message = (
                 "👋 Hello!\n\n"
@@ -1133,6 +1137,7 @@ async def global_unban(ctx, user_id: int):
     # Send results to the command runner
     response = "\n".join(results)
     await ctx.send(f"**🌎 Global Unban Report:**\n{response}")
+
 
 @bot.command(name="leaveserver")
 @commands.is_owner()
