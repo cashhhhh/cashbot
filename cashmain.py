@@ -76,6 +76,7 @@ AWS_INSTANCE_ID = 'i-0c5eefd9c3afd7969'  # Updated instance ID
 logging.basicConfig(level=logging.INFO)
 # Track all command usages
 command_usage_logs = []  # [(timestamp, guild_id, command_name)]
+dashboard_sessions = {}  # {user_id: {"page": int}}
 
 
 
@@ -2788,6 +2789,86 @@ async def checkticket_log(ctx, amount: float, unread_only: bool = True):
     except Exception as e:
         await ctx.send("❌ An error occurred while fetching emails.")
         logging.error(f"Checkticket log error: {str(e)}")
+from discord.ui import Button, View
+
+ENTRIES_PER_PAGE = 5
+
+@bot.command(name="dashboard")
+@commands.is_owner()
+async def dashboard(ctx):
+    """Interactive server activity dashboard."""
+    dashboard_sessions[ctx.author.id] = {"page": 0}
+    await send_dashboard(ctx, ctx.author.id)
+async def send_dashboard(ctx, user_id):
+    page = dashboard_sessions[user_id]["page"]
+
+    try:
+        with open(AUDIT_LOG_FILE, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        await ctx.send("❌ No audit log found.")
+        return
+
+    if not lines:
+        await ctx.send("✅ No activity found.")
+        return
+
+    start_idx = page * ENTRIES_PER_PAGE
+    end_idx = start_idx + ENTRIES_PER_PAGE
+    page_entries = lines[start_idx:end_idx]
+
+    if not page_entries:
+        await ctx.send("❌ No more entries.")
+        return
+
+    embed = discord.Embed(
+        title="📚 Server Activity Dashboard",
+        color=discord.Color.blue(),
+        timestamp=datetime.utcnow()
+    )
+
+    for line in page_entries:
+        entry = json.loads(line)
+        embed.add_field(
+            name=f"{entry['timestamp']} - {entry['type']}",
+            value=f"User ID: {entry['user_id']}\nDetails: {entry['details']}",
+            inline=False
+        )
+
+    # Setup Buttons
+    view = View()
+
+    async def previous_callback(interaction):
+        if interaction.user.id != user_id:
+            return await interaction.response.send_message("❌ Not your dashboard!", ephemeral=True)
+
+        if dashboard_sessions[user_id]["page"] > 0:
+            dashboard_sessions[user_id]["page"] -= 1
+            await interaction.response.defer()
+            await send_dashboard(ctx, user_id)
+        else:
+            await interaction.response.send_message("❌ Already at oldest page.", ephemeral=True)
+
+    async def next_callback(interaction):
+        if interaction.user.id != user_id:
+            return await interaction.response.send_message("❌ Not your dashboard!", ephemeral=True)
+
+        dashboard_sessions[user_id]["page"] += 1
+        await interaction.response.defer()
+        await send_dashboard(ctx, user_id)
+
+    view.add_item(Button(label="⬅️ Previous", style=discord.ButtonStyle.primary, custom_id="previous"))
+    view.add_item(Button(label="➡️ Next", style=discord.ButtonStyle.primary, custom_id="next"))
+
+    view.children[0].callback = previous_callback
+    view.children[1].callback = next_callback
+
+    await ctx.send(embed=embed, view=view)
+
+
+
+
+
 
 @bot.command(name='printroleids')
 async def print_role_ids(ctx):
