@@ -2589,35 +2589,7 @@ async def sales_report(ctx):
         
     except Exception as e:
         await ctx.send(f"❌ Error generating report: {str(e)}")
-@bot.event
-async def on_message(message):
-    if message.author.bot:
-        return  # Ignore other bots unless it's Big Larry
 
-    # Define Big Larry's user ID (find it by right-clicking him on Discord and copying ID)
-    BIG_LARRY_ID = 1367682684536754287  # REPLACE with Big Larry's real ID
-
-    # Define the specific channel ID
-    CHANNEL_ID = 1367680842033528953  # REPLACE with the specific channel ID where this happens
-
-    if message.channel.id == CHANNEL_ID and message.author.id == BIG_LARRY_ID:
-        # Pick a random vulgar roast from a list
-        roasts = [
-            "Bro you sound like a used plunger at a truck stop. Shut the fuck up, Big Larry.",
-            "You type like you got hit in the head with a frying pan, Larry. Sit down.",
-            "Nobody gives a flying fuck what your crusty lifeguard ass thinks. Go tan your forehead, bitch.",
-            "You’re the human version of a blocked toilet, Big Larry. 💩",
-            "Bro you built like a minivan full of disappointment. Quit typing essays, pussy.",
-            "Big Larry out here acting like a Dollar Tree superhero. Go save a lawn chair, bitch.",
-            "You’re not saving lives, Larry, you’re saving coupons. Dumbass."
-        ]
-
-        import random
-        roast = random.choice(roasts)
-
-        await message.channel.send(roast)
-
-    await bot.process_commands(message)  # Make sure commands still work
 
 
 # File to store guild information
