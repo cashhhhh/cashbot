@@ -74,6 +74,10 @@ ALERT_CHANNEL_ID = 1223077287457587221
 AWS_INSTANCE_ID = 'i-0c5eefd9c3afd7969'  # Updated instance ID
 # Logging Setup
 logging.basicConfig(level=logging.INFO)
+# Track all command usages
+command_usage_logs = []  # [(timestamp, guild_id, command_name)]
+
+
 
 # Flask App Setup
 app = Flask(__name__)
@@ -792,6 +796,21 @@ async def audit_dev_server(ctx):
 
 import re
 
+
+
+@bot.listen('on_command')
+async def track_command_usage(ctx):
+    now = datetime.utcnow()
+    command_usage_logs.append((now, ctx.guild.id if ctx.guild else None, ctx.command.name))
+
+    # Purge old logs beyond 5 days
+    five_days_ago = now - timedelta(days=5)
+    command_usage_logs[:] = [
+        (timestamp, guild_id, command_name)
+        for timestamp, guild_id, command_name in command_usage_logs
+        if timestamp >= five_days_ago
+    ]
+
 @bot.command(name="remindme")
 async def remind_me(ctx, time_str: str, *, reminder: str = "You asked to be reminded."):
     """Set a reminder. Example: !remindme 15m Do something."""
@@ -1098,6 +1117,34 @@ async def leave_server_by_id(ctx, server_id: int):
     except discord.HTTPException as e:
         await ctx.send(f"❌ Failed to leave the server: {e}")
 
+@bot.command(name="commandusage")
+@commands.is_owner()
+async def command_usage(ctx):
+    """Show command usage stats across all servers for the last 5 days."""
+    now = datetime.utcnow()
+    five_days_ago = now - timedelta(days=5)
+
+    usage_counter = {}
+    for timestamp, guild_id, command_name in command_usage_logs:
+        if timestamp >= five_days_ago:
+            usage_counter[command_name] = usage_counter.get(command_name, 0) + 1
+
+    if not usage_counter:
+        await ctx.send("No command usage recorded in the last 5 days.")
+        return
+
+    sorted_usage = sorted(usage_counter.items(), key=lambda x: x[1], reverse=True)
+
+    embed = discord.Embed(
+        title="📊 Command Usage (Last 5 Days)",
+        color=discord.Color.blue(),
+        timestamp=datetime.utcnow()
+    )
+
+    for cmd_name, count in sorted_usage:
+        embed.add_field(name=f"!{cmd_name}", value=f"Used {count} times", inline=False)
+
+    await ctx.send(embed=embed)
 
 
 @bot.command(name="train")
