@@ -2791,79 +2791,32 @@ async def checkticket_log(ctx, amount: float, unread_only: bool = True):
         logging.error(f"Checkticket log error: {str(e)}")
 from discord.ui import Button, View
 
-ENTRIES_PER_PAGE = 5
+@bot.command(name="serverdashboard")
+@commands.has_permissions(administrator=True)
+async def server_dashboard(ctx):
+    """Show server stats in a clean dashboard."""
+    guild_id = ctx.guild.id
 
-@bot.command(name="dashboard")
-@commands.is_owner()
-async def dashboard(ctx):
-    """Interactive server activity dashboard."""
-    dashboard_sessions[ctx.author.id] = {"page": 0}
-    await send_dashboard(ctx, ctx.author.id)
-async def send_dashboard(ctx, user_id):
-    page = dashboard_sessions[user_id]["page"]
-
-    try:
-        with open(AUDIT_LOG_FILE, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-    except FileNotFoundError:
-        await ctx.send("❌ No audit log found.")
-        return
-
-    if not lines:
-        await ctx.send("✅ No activity found.")
-        return
-
-    start_idx = page * ENTRIES_PER_PAGE
-    end_idx = start_idx + ENTRIES_PER_PAGE
-    page_entries = lines[start_idx:end_idx]
-
-    if not page_entries:
-        await ctx.send("❌ No more entries.")
+    stats = server_stats.get(guild_id)
+    if not stats:
+        await ctx.send("❌ No stats available yet for this server.")
         return
 
     embed = discord.Embed(
-        title="📚 Server Activity Dashboard",
-        color=discord.Color.blue(),
+        title=f"📊 Server Dashboard for {ctx.guild.name}",
+        color=discord.Color.green(),
         timestamp=datetime.utcnow()
     )
 
-    for line in page_entries:
-        entry = json.loads(line)
-        embed.add_field(
-            name=f"{entry['timestamp']} - {entry['type']}",
-            value=f"User ID: {entry['user_id']}\nDetails: {entry['details']}",
-            inline=False
-        )
+    embed.add_field(name="Total Sales", value=f"🛒 {stats['sales']}", inline=True)
+    embed.add_field(name="Total Fraud Alerts", value=f"🚨 {stats['frauds']}", inline=True)
+    embed.add_field(name="Tickets Opened", value=f"🎟️ {stats['tickets']}", inline=True)
+    embed.add_field(name="Users Joined", value=f"👥 {stats['joins']}", inline=True)
+    embed.add_field(name="Commands Used (Last 5 Days)", value=f"⌨️ {stats['commands_used']}", inline=True)
 
-    # Setup Buttons
-    view = View()
+    await ctx.send(embed=embed)
 
-    async def previous_callback(interaction):
-        if interaction.user.id != user_id:
-            return await interaction.response.send_message("❌ Not your dashboard!", ephemeral=True)
 
-        if dashboard_sessions[user_id]["page"] > 0:
-            dashboard_sessions[user_id]["page"] -= 1
-            await interaction.response.defer()
-            await send_dashboard(ctx, user_id)
-        else:
-            await interaction.response.send_message("❌ Already at oldest page.", ephemeral=True)
-
-    async def next_callback(interaction):
-        if interaction.user.id != user_id:
-            return await interaction.response.send_message("❌ Not your dashboard!", ephemeral=True)
-
-        dashboard_sessions[user_id]["page"] += 1
-        await interaction.response.defer()
-        await send_dashboard(ctx, user_id)
-
-    view.add_item(Button(label="⬅️ Previous", style=discord.ButtonStyle.primary, custom_id="previous"))
-    view.add_item(Button(label="➡️ Next", style=discord.ButtonStyle.primary, custom_id="next"))
-
-    view.children[0].callback = previous_callback
-    view.children[1].callback = next_callback
-
-    await ctx.send(embed=embed, view=view)
 
 
 
