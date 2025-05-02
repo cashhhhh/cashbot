@@ -1099,16 +1099,19 @@ async def global_unban(ctx, user_id: int):
     results = []
 
     try:
-        user = await bot.fetch_user(user_id)  # Fetch full User object at the start
+        user = await bot.fetch_user(user_id)
     except Exception as e:
         await ctx.send(f"❌ Failed to fetch user: {e}")
         return
 
     for guild in bot.guilds:
         try:
-            bans = await guild.bans()
-            banned_users = [ban_entry.user for ban_entry in bans]
+            # Fetch bans properly
+            banned_users = []
+            async for ban_entry in guild.bans():
+                banned_users.append(ban_entry.user)
 
+            # Check if user is banned
             if any(bu.id == user.id for bu in banned_users):
                 await guild.unban(user)
                 results.append(f"✅ {guild.name}: Unbanned successfully")
@@ -1118,7 +1121,7 @@ async def global_unban(ctx, user_id: int):
         except Exception as e:
             results.append(f"⚠️ {guild.name}: Failed to unban ({e})")
 
-    # Try to DM the user after unbanning
+    # DM user after unban
     try:
         if user:
             dm_message = (
@@ -1134,9 +1137,10 @@ async def global_unban(ctx, user_id: int):
     except Exception as e:
         results.append(f"⚠️ Failed to send DM: {e}")
 
-    # Send results to the command runner
+    # Send final report
     response = "\n".join(results)
     await ctx.send(f"**🌎 Global Unban Report:**\n{response}")
+
 
 
 @bot.command(name="leaveserver")
