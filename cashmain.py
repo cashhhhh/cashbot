@@ -2818,7 +2818,157 @@ async def server_dashboard(ctx):
 
 
 
+# --- CONFIG ---
+OWNER_IDS = [480028928329777163]  # <- YOUR Discord User ID goes here
+AUDIT_LOG_FILE = "auditlog.jsonl"
 
+# --- Helper to save to audit log ---
+def save_audit_log(event_type, user_id, details):
+    entry = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "type": event_type,
+        "user_id": str(user_id),
+        "details": details
+    }
+    with open(AUDIT_LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
+
+# --- The actual Owner Panel command ---
+@commands.command(name="ownerpanel")
+async def owner_panel(ctx):
+    if ctx.author.id not in OWNER_IDS:
+        await ctx.send("❌ You do not have permission to access the Owner Command Center.", delete_after=5)
+        return
+
+    view = View(timeout=300)  # 5 minutes timeout
+
+    embed = discord.Embed(
+        title="🏛️ Owner Command Center",
+        description="Choose your action below:",
+        color=discord.Color.gold(),
+        timestamp=datetime.utcnow()
+    )
+
+    # --- Button: Global Ban ---
+    async def global_ban_callback(interaction):
+        await interaction.response.send_message("Please provide the User ID to globally ban:", ephemeral=True)
+        msg = await bot.wait_for("message", check=lambda m: m.author.id == ctx.author.id, timeout=60)
+        target_id = int(msg.content.strip("<@!>"))
+
+        confirm_embed = discord.Embed(title="⚠️ Confirm Global Ban", description=f"Ban <@{target_id}> globally?", color=discord.Color.red())
+        confirm_view = View()
+
+        async def confirm_ban_callback(confirm_interaction):
+            for guild in bot.guilds:
+                try:
+                    user = await bot.fetch_user(target_id)
+                    await guild.ban(user, reason="Global ban via Owner Panel")
+                except Exception:
+                    pass
+            try:
+                user = await bot.fetch_user(target_id)
+                await user.send("🚫 You have been globally banned by server administration.")
+            except:
+                pass
+            save_audit_log("global_ban", target_id, f"Globally banned by {ctx.author}")
+            await confirm_interaction.response.send_message(f"✅ User <@{target_id}> globally banned.", ephemeral=True)
+
+        async def cancel_callback(confirm_interaction):
+            await confirm_interaction.response.send_message("❌ Cancelled.", ephemeral=True)
+
+        confirm_view.add_item(Button(label="✅ Confirm", style=discord.ButtonStyle.danger, custom_id="confirm_ban"))
+        confirm_view.add_item(Button(label="❌ Cancel", style=discord.ButtonStyle.secondary, custom_id="cancel_ban"))
+
+        confirm_view.children[0].callback = confirm_ban_callback
+        confirm_view.children[1].callback = cancel_callback
+
+        await ctx.author.send(embed=confirm_embed, view=confirm_view)
+
+    # --- Button: View User History ---
+    async def view_history_callback(interaction):
+        await interaction.response.send_message("Provide User ID to view history:", ephemeral=True)
+        msg = await bot.wait_for("message", check=lambda m: m.author.id == ctx.author.id, timeout=60)
+        target_id = msg.content.strip("<@!>")
+
+        embed_history = discord.Embed(title=f"📜 User History: {target_id}", color=discord.Color.blue())
+
+        try:
+            with open(AUDIT_LOG_FILE, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            user_entries = [json.loads(l) for l in lines if json.loads(l)["user_id"] == target_id]
+
+            if not user_entries:
+                embed_history.description = "No records found."
+            else:
+                for entry in user_entries[-10:]:  # Show last 10 actions
+                    embed_history.add_field(name=entry["timestamp"], value=f"{entry['type']} - {entry['details']}", inline=False)
+        except:
+            embed_history.description = "No audit log found."
+
+        await ctx.author.send(embed=embed_history)
+
+    # --- Button: Emergency Lockdown ---
+    async def lockdown_callback(interaction):
+        await interaction.response.send_message("⚠️ Confirm Emergency Lockdown?", ephemeral=True)
+        confirm_view = View()
+
+        async def confirm_lockdown_callback(confirm_interaction):
+            # Example lockdown: disable posting, mute sellers
+            for guild in bot.guilds:
+                for channel in guild.text_channels:
+                    try:
+                        await channel.set_permissions(guild.default_role, send_messages=False)
+                    except:
+                        pass
+            save_audit_log("lockdown", ctx.guild.id, "Emergency Lockdown triggered")
+            await confirm_interaction.response.send_message("🚨 Emergency Lockdown Activated.", ephemeral=True)
+
+        async def cancel_lockdown_callback(confirm_interaction):
+            await confirm_interaction.response.send_message("❌ Lockdown Cancelled.", ephemeral=True)
+
+        confirm_view.add_item(Button(label="✅ Confirm Lockdown", style=discord.ButtonStyle.danger))
+        confirm_view.add_item(Button(label="❌ Cancel", style=discord.ButtonStyle.secondary))
+
+        confirm_view.children[0].callback = confirm_lockdown_callback
+        confirm_view.children[1].callback = cancel_lockdown_callback
+
+        await ctx.author.send(view=confirm_view)
+
+    # --- Button: Investigation ---
+    async def investigation_callback(interaction):
+        await interaction.response.send_message("Provide User ID to investigate:", ephemeral=True)
+        msg = await bot.wait_for("message", check=lambda m: m.author.id == ctx.author.id, timeout=60)
+        target_id = int(msg.content.strip("<@!>"))
+
+        try:
+            user = await bot.fetch_user(target_id)
+            await user.send("🔎 You are under investigation by server security staff. Please operate professionally.")
+        except:
+            pass
+
+        save_audit_log("investigation", target_id, f"Investigation opened by {ctx.author}")
+        await ctx.author.send(f"✅ Investigation opened on <@{target_id}>.")
+
+    # --- Buttons ---
+    ban_button = Button(label="🚫 Ban User Globally", style=discord.ButtonStyle.danger)
+    history_button = Button(label="📜 View User History", style=discord.ButtonStyle.primary)
+    lockdown_button = Button(label="🚨 Emergency Lockdown", style=discord.ButtonStyle.danger)
+    investigate_button = Button(label="🔍 Investigate User", style=discord.ButtonStyle.secondary)
+
+    ban_button.callback = global_ban_callback
+    history_button.callback = view_history_callback
+    lockdown_button.callback = lockdown_callback
+    investigate_button.callback = investigation_callback
+
+    view.add_item(ban_button)
+    view.add_item(history_button)
+    view.add_item(lockdown_button)
+    view.add_item(investigate_button)
+
+    await ctx.author.send(embed=embed, view=view)
+
+# --- ADD THE COMMAND ---
+bot.add_command(owner_panel)
 
 
 
