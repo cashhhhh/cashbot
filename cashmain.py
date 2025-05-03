@@ -950,7 +950,7 @@ import asyncio
 from datetime import datetime
 
 POST_CHANNEL_ID = 1103526122211262565  # Correct marketplace channel
-CASH_BOT_ID = 123456789012345678  # <<< REPLACE THIS with your real Cash Bot's user ID
+CASH_BOT_ID = 1326838893420613652  # <<< REPLACE THIS with your real Cash Bot's user ID
 
 @bot.command(name="postdeal")
 async def post_deal(ctx):
