@@ -1047,6 +1047,99 @@ class ConfirmView(discord.ui.View):
 
 # Do not forget to merge this properly under your existing bot instance and event loop.
 
+import re
+import discord
+from discord.ext import commands
+
+# Make sure POST_CHANNEL_ID and BOT_USER_ID are correctly set at the top of your file
+POST_CHANNEL_ID = 1103526122211262565  # Your deals channel
+BOT_USER_ID = 123456789012345678        # <<< replace with your actual Cash Bot ID
+
+# Sales rank thresholds
+RANKS = [
+    (0, "Trial Salesman", 0),
+    (3, "Novice Salesman", 10),
+    (6, "Junior Salesman", 20),
+    (16, "Senior Salesman", 25),
+    (36, "Pro Salesman", 30),
+    (56, "Expert Salesman", 33)
+]
+
+@bot.hybrid_command(name="logcommission", description="Calculate a salesman's total deals and commission.")
+async def logcommission(ctx, member: discord.Member = None):
+    if member is None:
+        member = ctx.author
+
+    post_channel = bot.get_channel(POST_CHANNEL_ID)
+    if post_channel is None:
+        await ctx.send("Error: Could not find the post channel.")
+        return
+
+    await ctx.send(f"Calculating commissions for {member.mention}, please wait...")
+
+    # Fetch last 1200 messages
+    messages = [msg async for msg in post_channel.history(limit=1200)]
+
+    total_deals = 0
+    total_sales = 0
+
+    for msg in messages:
+        if msg.author.id != BOT_USER_ID:
+            continue
+        if not msg.embeds:
+            continue
+
+        embed = msg.embeds[0]
+
+        if f"{member.mention}" not in (msg.content or ""):
+            continue
+
+        price = None
+        for field in embed.fields:
+            if "Total Price" in field.name:
+                match = re.search(r'\\$([0-9]+)', field.value)
+                if match:
+                    price = int(match.group(1))
+                break
+
+        if price is not None:
+            total_deals += 1
+            total_sales += price
+
+    # Determine rank and commission
+    current_rank = "Unknown"
+    commission_rate = 0
+    next_rank = None
+    next_needed = None
+
+    for threshold, rank, rate in reversed(RANKS):
+        if total_deals >= threshold:
+            current_rank = rank
+            commission_rate = rate
+            break
+
+    for threshold, rank, rate in RANKS:
+        if total_deals < threshold:
+            next_rank = rank
+            next_needed = threshold - total_deals
+            break
+
+    commission_earned = int(total_sales * (commission_rate / 100))
+
+    # Build final embed
+    embed = discord.Embed(title=f"Commission Report: {member.display_name}", color=0x00ff00)
+    embed.add_field(name="Total Deals Closed", value=total_deals, inline=False)
+    embed.add_field(name="Total Sales Volume", value=f"${total_sales}", inline=False)
+    embed.add_field(name="Current Rank", value=current_rank, inline=False)
+    embed.add_field(name="Commission Rate", value=f"{commission_rate}%", inline=False)
+    embed.add_field(name="Total Commission Earned", value=f"${commission_earned}", inline=False)
+
+    if next_rank:
+        embed.add_field(name="Next Promotion", value=f"{next_rank} in {next_needed} more sales", inline=False)
+
+    await ctx.send(embed=embed)
+
+
 @bot.hybrid_command(name="approvepending", description="Manually approve a pending deal posting.")
 async def approve_pending(ctx: commands.Context):
     # Only allow specific user to use this
