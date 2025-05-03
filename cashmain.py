@@ -961,7 +961,7 @@ async def post_deal(ctx):
     await ctx.send("Checking recent messages for approved Gift Card...")
 
     # Check last 20 messages for Cash Bot approval
-    messages = await ctx.channel.history(limit=20).flatten()
+    messages = [msg async for msg in ctx.channel.history(limit=20)]
     amount_found = None
 
     for msg in messages:
