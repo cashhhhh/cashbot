@@ -1448,6 +1448,147 @@ async def global_unban(ctx, user_id: int):
     response = "\n".join(results)
     await ctx.send(f"**🌎 Global Unban Report:**\n{response}")
 
+import discord
+from discord.ext import commands
+from discord import app_commands
+import asyncio
+from datetime import datetime, timedelta
+
+# CONFIG
+OWNER_ID = 480028928329777163  # Your Discord user ID
+SALES_CHANNEL_ID = 1103526122211262565  # Your sales post channel
+TICKET_CATEGORY_ID = 123456789012345678  # Your ticket category (update with real one)
+POST_CHANNEL_ID = 1103526122211262565  # Deals channel for counting
+ROLE_REQUEST_CHANNEL_ID = 1362826410133295326  # Example role request channel
+MENTION_TARGET_ID = 480028928329777163  # You (Cash)
+
+class DashboardView(discord.ui.View):
+    def __init__(self, embeds):
+        super().__init__(timeout=300)
+        self.embeds = embeds
+        self.index = 0
+
+    @discord.ui.button(label="⬅️ Back", style=discord.ButtonStyle.secondary)
+    async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != OWNER_ID:
+            await interaction.response.send_message("You can't control this.", ephemeral=True)
+            return
+        self.index = (self.index - 1) % len(self.embeds)
+        await interaction.response.edit_message(embed=self.embeds[self.index], view=self)
+
+    @discord.ui.button(label="➡️ Next", style=discord.ButtonStyle.secondary)
+    async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != OWNER_ID:
+            await interaction.response.send_message("You can't control this.", ephemeral=True)
+            return
+        self.index = (self.index + 1) % len(self.embeds)
+        await interaction.response.edit_message(embed=self.embeds[self.index], view=self)
+
+    @discord.ui.button(label="Panic Lock Server", style=discord.ButtonStyle.danger)
+    async def panic(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != OWNER_ID:
+            await interaction.response.send_message("You can't control this.", ephemeral=True)
+            return
+        await interaction.response.send_message("\u26a0\ufe0f Panic Lock Triggered! (Placeholder action)", ephemeral=True)
+
+@bot.command(name="operationsdashboard")
+async def operationsdashboard(ctx):
+    if ctx.author.id != OWNER_ID:
+        await ctx.send("You do not have permission to run this.")
+        return
+
+    await ctx.send("\u23f3 Gathering full operational data... Please wait...")
+
+    sales_channel = bot.get_channel(SALES_CHANNEL_ID)
+    post_channel = bot.get_channel(POST_CHANNEL_ID)
+
+    now = datetime.utcnow()
+    yesterday = now - timedelta(days=1)
+    week = now - timedelta(days=7)
+
+    # --- SALES DATA ---
+    last_24h_sales = 0
+    last_7d_sales = 0
+    deal_count_24h = 0
+    deal_count_7d = 0
+
+    if post_channel:
+        async for msg in post_channel.history(after=week, limit=1200):
+            if msg.author.bot and msg.embeds:
+                embed = msg.embeds[0]
+                for field in embed.fields:
+                    if "Total Price" in field.name:
+                        try:
+                            amount = int(field.value.replace("$", "").strip())
+                            if msg.created_at > yesterday:
+                                last_24h_sales += amount
+                                deal_count_24h += 1
+                            last_7d_sales += amount
+                            deal_count_7d += 1
+                        except:
+                            continue
+
+    # --- TICKET DATA ---
+    active_tickets = 0
+    stuck_tickets = 0
+    try:
+        ticket_category = discord.utils.get(ctx.guild.categories, id=TICKET_CATEGORY_ID)
+        if ticket_category:
+            for channel in ticket_category.channels:
+                if isinstance(channel, discord.TextChannel):
+                    active_tickets += 1
+    except:
+        pass
+
+    # --- MENTION DATA ---
+    mention_count = 0
+    for channel in ctx.guild.text_channels:
+        try:
+            async for msg in channel.history(after=yesterday, limit=300):
+                if any(user.id == MENTION_TARGET_ID for user in msg.mentions):
+                    mention_count += 1
+        except:
+            continue
+
+    # --- STAFF ONLINE ---
+    staff_online = sum(1 for m in ctx.guild.members if any(r.permissions.kick_members for r in m.roles) and m.status != discord.Status.offline)
+
+    # --- BOT PING ---
+    ping_ms = round(bot.latency * 1000)
+
+    # --- EMBEDS ---
+    page1 = discord.Embed(title="\ud83d\udcc8 Sales & Ticket Overview", color=0x00ff99)
+    page1.add_field(name="Sales Last 24h", value=f"${last_24h_sales}", inline=True)
+    page1.add_field(name="Sales Last 7d", value=f"${last_7d_sales}", inline=True)
+    page1.add_field(name="Deals 24h", value=f"{deal_count_24h}", inline=True)
+    page1.add_field(name="Deals 7d", value=f"{deal_count_7d}", inline=True)
+    page1.add_field(name="Active Tickets", value=f"{active_tickets}", inline=True)
+    page1.set_footer(text=f"Generated {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
+
+    page2 = discord.Embed(title="\ud83d\udc68\u200d\ud83d\udcbc Staff, Roles & Fraud", color=0x3498db)
+    page2.add_field(name="Staff Online", value=f"{staff_online}", inline=True)
+    page2.add_field(name="Pending Role Requests", value=f"(Coming soon)", inline=True)
+    page2.add_field(name="Recent Fraud Flags", value=f"(Coming soon)", inline=True)
+
+    page3 = discord.Embed(title="\ud83d\udcca Community Growth Tracker", color=0x9b59b6)
+    page3.add_field(name="Mentions of Cash (24h)", value=f"{mention_count}", inline=True)
+    page3.add_field(name="New Members 24h", value=f"(Coming soon)", inline=True)
+    page3.add_field(name="Top Invite Booster", value=f"(Coming soon)", inline=True)
+
+    page4 = discord.Embed(title="\ud83d\udcca Bot Health and Emergency", color=0xe67e22)
+    page4.add_field(name="Bot Uptime (Ping)", value=f"{ping_ms}ms", inline=True)
+    page4.add_field(name="Emergency Lock", value=f"Use Panic Button \ud83d\uded1", inline=True)
+
+    embeds = [page1, page2, page3, page4]
+
+    await ctx.send(embed=page1, view=DashboardView(embeds))
+
+# --- END OF FILE ---
+
+# Notes:
+# - Replace TICKET_CATEGORY_ID with your real ticket category ID
+# - Replace channels if needed for deal logging
+# - This is v1.0, will upgrade "coming soon" stats next!
 
 
 @bot.command(name="leaveserver")
