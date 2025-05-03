@@ -944,6 +944,108 @@ async def apply(ctx):
     except Exception:
         await ctx.send("❌ Failed to DM you. Please open your DMs.")
 
+import discord
+from discord.ext import commands
+import asyncio
+from datetime import datetime
+
+POST_CHANNEL_ID = 1103526122211262565  # Correct marketplace channel
+CASH_BOT_ID = 123456789012345678  # <<< REPLACE THIS with your real Cash Bot's user ID
+
+@bot.command(name="postdeal")
+async def post_deal(ctx):
+    if not isinstance(ctx.channel, discord.TextChannel):
+        await ctx.send("This command must be used inside a ticket channel.")
+        return
+
+    await ctx.send("Checking recent messages for approved Gift Card...")
+
+    # Check last 20 messages for Cash Bot approval
+    messages = await ctx.channel.history(limit=20).flatten()
+    amount_found = None
+
+    for msg in messages:
+        if msg.author.id == CASH_BOT_ID:
+            if msg.embeds:
+                embed = msg.embeds[0]
+                for field in embed.fields:
+                    if "Gift Card Found" in field.value:
+                        # Extract amount from embed fields
+                        for sub_field in embed.fields:
+                            if "Amount" in sub_field.name:
+                                amount_found = sub_field.value.strip()
+                                break
+            if amount_found:
+                break
+
+    if not amount_found:
+        await ctx.send(f"Pending Management Approval. <@480028928329777163>")
+        return
+
+    # If approved, collect additional info
+    def check_author(m):
+        return m.author == ctx.author and m.channel == ctx.channel
+
+    try:
+        await ctx.send("Enter the Customer Name:")
+        customer = (await bot.wait_for("message", check=check_author, timeout=120)).content
+
+        await ctx.send("Enter the Vehicle(s):")
+        vehicles = (await bot.wait_for("message", check=check_author, timeout=120)).content
+
+        await ctx.send("Enter your Current Rank:")
+        rank = (await bot.wait_for("message", check=check_author, timeout=120)).content
+
+    except asyncio.TimeoutError:
+        await ctx.send("You took too long to respond. Please try again.")
+        return
+
+    # Extract Ticket Number from channel name
+    ticket_number = ctx.channel.name.split("-")[-1]
+    today_date = datetime.utcnow().strftime("%m/%d/%y")
+
+    # Build the preview embed
+    preview = discord.Embed(title="Deal Preview", color=0x00ff00)
+    preview.add_field(name="Date", value=today_date, inline=False)
+    preview.add_field(name="Customer", value=customer, inline=False)
+    preview.add_field(name="Vehicles", value=vehicles, inline=False)
+    preview.add_field(name="Total Price", value=amount_found, inline=False)
+    preview.add_field(name="Ticket", value=ticket_number, inline=False)
+    preview.add_field(name="Current Rank", value=rank, inline=False)
+
+    view = ConfirmView(ctx.author)
+
+    await ctx.send(embed=preview, view=view)
+
+class ConfirmView(discord.ui.View):
+    def __init__(self, author):
+        super().__init__(timeout=60)
+        self.author = author
+
+    @discord.ui.button(label="Approve", style=discord.ButtonStyle.success)
+    async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user != self.author:
+            await interaction.response.send_message("Only the salesman who started the post can approve it.", ephemeral=True)
+            return
+
+        post_channel = bot.get_channel(POST_CHANNEL_ID)
+        if not post_channel:
+            await interaction.response.send_message("Failed to find post channel.", ephemeral=True)
+            return
+
+        await post_channel.send(content=f"Approved Deal posted by {self.author.mention}:", embed=self.message.embeds[0])
+        await interaction.response.send_message("Deal posted successfully.", ephemeral=True)
+        self.stop()
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user != self.author:
+            await interaction.response.send_message("Only the salesman who started the post can cancel it.", ephemeral=True)
+            return
+        await interaction.response.send_message("Cancelled deal posting.", ephemeral=True)
+        self.stop()
+
+# Do not forget to merge this properly under your existing bot instance and event loop.
 
 @bot.command()
 async def profit(ctx):
