@@ -1046,26 +1046,25 @@ class ConfirmView(discord.ui.View):
         self.stop()
 
 # Do not forget to merge this properly under your existing bot instance and event loop.
-
-import re
 import discord
 from discord.ext import commands
+import re
 
-# Make sure POST_CHANNEL_ID and BOT_USER_ID are correctly set at the top of your file
+# --- CONFIGURATION ---
 POST_CHANNEL_ID = 1103526122211262565  # Your deals channel
-BOT_USER_ID = 123456789012345678        # <<< replace with your actual Cash Bot ID
+BOT_USER_ID = 123456789012345678        # <<< REPLACE with your actual Cash Bot's ID
 
-# Sales rank thresholds
-RANKS = [
-    (0, "Trial Salesman", 0),
-    (3, "Novice Salesman", 10),
-    (6, "Junior Salesman", 20),
-    (16, "Senior Salesman", 25),
-    (36, "Pro Salesman", 30),
-    (56, "Expert Salesman", 33)
-]
+# Role to commission mapping
+ROLE_COMMISSIONS = {
+    "Trial Salesman": 0,
+    "Novice Salesman": 10,
+    "Jr. Salesman": 20,
+    "Senior Salesman": 25,
+    "Pro Salesman": 30,
+    "Expert Salesman": 33,
+}
 
-@bot.hybrid_command(name="logcommission", description="Calculate a salesman's total deals and commission.")
+@bot.hybrid_command(name="logcommission", description="Calculate a salesman's total deals and commission based on real roles.")
 async def logcommission(ctx, member: discord.Member = None):
     if member is None:
         member = ctx.author
@@ -1085,19 +1084,24 @@ async def logcommission(ctx, member: discord.Member = None):
 
     for msg in messages:
         if msg.author.id != BOT_USER_ID:
-            continue
+            continue  # Only Cash Bot messages
         if not msg.embeds:
-            continue
+            continue  # Must have an embed
 
         embed = msg.embeds[0]
 
-        if f"{member.mention}" not in (msg.content or ""):
+        if embed.title != "Approved Deal":
+            continue  # Only process real deal posts
+
+        # Match based on message content mention
+        if member.mention not in (msg.content or ""):
             continue
 
+        # Extract price from embed field
         price = None
         for field in embed.fields:
             if "Total Price" in field.name:
-                match = re.search(r'\\$([0-9]+)', field.value)
+                match = re.search(r'\$([0-9]+)', field.value)
                 if match:
                     price = int(match.group(1))
                 break
@@ -1106,38 +1110,31 @@ async def logcommission(ctx, member: discord.Member = None):
             total_deals += 1
             total_sales += price
 
-    # Determine rank and commission
-    current_rank = "Unknown"
+    # Determine commission rate based on user's roles
     commission_rate = 0
-    next_rank = None
-    next_needed = None
+    user_roles = [role.name for role in member.roles]
 
-    for threshold, rank, rate in reversed(RANKS):
-        if total_deals >= threshold:
-            current_rank = rank
+    for role_name, rate in ROLE_COMMISSIONS.items():
+        if role_name in user_roles:
             commission_rate = rate
-            break
-
-    for threshold, rank, rate in RANKS:
-        if total_deals < threshold:
-            next_rank = rank
-            next_needed = threshold - total_deals
             break
 
     commission_earned = int(total_sales * (commission_rate / 100))
 
-    # Build final embed
+    # Build final embed report
     embed = discord.Embed(title=f"Commission Report: {member.display_name}", color=0x00ff00)
     embed.add_field(name="Total Deals Closed", value=total_deals, inline=False)
     embed.add_field(name="Total Sales Volume", value=f"${total_sales}", inline=False)
-    embed.add_field(name="Current Rank", value=current_rank, inline=False)
+    embed.add_field(name="Current Role", value=next((r for r in user_roles if r in ROLE_COMMISSIONS), "Unknown"), inline=False)
     embed.add_field(name="Commission Rate", value=f"{commission_rate}%", inline=False)
     embed.add_field(name="Total Commission Earned", value=f"${commission_earned}", inline=False)
 
-    if next_rank:
-        embed.add_field(name="Next Promotion", value=f"{next_rank} in {next_needed} more sales", inline=False)
-
     await ctx.send(embed=embed)
+
+# --- REMEMBER ---
+# Replace BOT_USER_ID with your real Cash Bot ID.
+# Ensure the bot has permissions: Read Message History, Read Messages, Send Messages.
+
 
 
 @bot.hybrid_command(name="approvepending", description="Manually approve a pending deal posting.")
