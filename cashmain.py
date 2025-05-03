@@ -1052,7 +1052,7 @@ import re
 
 # --- CONFIGURATION ---
 POST_CHANNEL_ID = 1103526122211262565  # Your deals channel
-BOT_USER_ID = 123456789012345678        # <<< REPLACE with your actual Cash Bot's ID
+BOT_USER_ID = 1326838893420613652        # <<< REPLACE with your actual Cash Bot's ID
 
 # Role to commission mapping
 ROLE_COMMISSIONS = {
