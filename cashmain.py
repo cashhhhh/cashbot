@@ -1101,7 +1101,7 @@ async def logcommission(ctx, member: discord.Member = None):
         price = None
         for field in embed.fields:
             if "Total Price" in field.name:
-                match = re.search(r'\\$?([0-9]+)', field.value)
+                match = re.search(r'\$?([0-9]+)', field.value)
                 if match:
                     price = int(match.group(1))
                 break
