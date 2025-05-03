@@ -1135,6 +1135,68 @@ async def logcommission(ctx, member: discord.Member = None):
 # Replace BOT_USER_ID with your real Cash Bot ID.
 # Ensure the bot has permissions: Read Message History, Read Messages, Send Messages.
 
+import discord
+from discord.ext import commands
+from datetime import datetime, timedelta
+
+TARGET_USER_ID = 480028928329777163  # Your ID (Cash)
+POST_CHANNEL_ID = 1362557854208491630  # Where to repost found messages
+
+@bot.hybrid_command(name="searchcash", description="Pulls all messages mentioning Cash or 'cash' in last 4 days.")
+async def searchcash(ctx):
+    await ctx.send("Searching messages, please wait...")
+
+    repost_channel = bot.get_channel(POST_CHANNEL_ID)
+    if repost_channel is None:
+        await ctx.send("Error: Could not find the repost channel.")
+        return
+
+    four_days_ago = datetime.utcnow() - timedelta(days=4)
+    found_messages = []
+
+    for channel in ctx.guild.text_channels:
+        try:
+            async for msg in channel.history(after=four_days_ago, limit=None):
+                if msg.author.bot:
+                    continue  # Ignore bot messages
+
+                # Check if Cash is mentioned or "cash" appears in message content
+                if (any(user.id == TARGET_USER_ID for user in msg.mentions)) or ("cash" in msg.content.lower()):
+                    found_messages.append(msg)
+
+                if len(found_messages) >= 75:
+                    break
+            if len(found_messages) >= 75:
+                break
+        except Exception as e:
+            print(f"Failed to read {channel.name}: {e}")
+            continue
+
+    if not found_messages:
+        await ctx.send("No messages mentioning you or 'cash' found in the last 4 days.")
+        return
+
+    await ctx.send(f"Found {len(found_messages)} messages. Posting them now...")
+
+    for msg in found_messages:
+        jump_link = msg.jump_url
+        content_preview = msg.content if len(msg.content) < 500 else msg.content[:500] + "..."
+
+        embed = discord.Embed(title=f"Mention by {msg.author.display_name}", description=content_preview, color=0x3498db)
+        embed.add_field(name="Channel", value=msg.channel.mention, inline=True)
+        embed.add_field(name="[View Message]", value=f"[Jump to Message]({jump_link})", inline=True)
+        embed.set_footer(text=f"Sent at {msg.created_at.strftime('%Y-%m-%d %H:%M:%S')} UTC")
+
+        await repost_channel.send(embed=embed)
+
+    await ctx.send("Finished posting all found messages!")
+
+# --- NOTES ---
+# Make sure your bot has:
+# - Read Message History
+# - Read Messages
+# - Send Messages
+# - Embed Links permissions in the repost channel.
 
 
 @bot.hybrid_command(name="approvepending", description="Manually approve a pending deal posting.")
