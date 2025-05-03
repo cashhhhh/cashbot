@@ -1047,6 +1047,58 @@ class ConfirmView(discord.ui.View):
 
 # Do not forget to merge this properly under your existing bot instance and event loop.
 
+@bot.hybrid_command(name="approvepending", description="Manually approve a pending deal posting.")
+async def approve_pending(ctx: commands.Context):
+    # Only allow specific user to use this
+    if ctx.author.id != 480028928329777163:  # YOUR USER ID
+        await ctx.send("You do not have permission to approve pending deals.", ephemeral=True)
+        return
+
+    await ctx.send("Manually approving pending deal. Please provide the following:")
+
+    def check_author(m):
+        return m.author == ctx.author and m.channel == ctx.channel
+
+    try:
+        await ctx.send("Enter the Customer Name:")
+        customer = (await bot.wait_for("message", check=check_author, timeout=120)).content
+
+        await ctx.send("Enter the Vehicle(s):")
+        vehicles = (await bot.wait_for("message", check=check_author, timeout=120)).content
+
+        await ctx.send("Enter your Current Rank:")
+        rank = (await bot.wait_for("message", check=check_author, timeout=120)).content
+
+    except asyncio.TimeoutError:
+        await ctx.send("You took too long to respond. Please try again.")
+        return
+
+    # Extract Ticket Number from channel name
+    ticket_number = ctx.channel.name.split("-")[-1]
+    today_date = datetime.utcnow().strftime("%m/%d/%y")
+
+    # Since this is a manual approve, no auto amount from Gift Card
+    await ctx.send("Enter the Total Price (e.g., $30):")
+    total_price = (await bot.wait_for("message", check=check_author, timeout=120)).content
+
+    # Build the final deal embed
+    deal = discord.Embed(title="Approved Deal", color=0x00ff00)
+    deal.add_field(name="Date", value=today_date, inline=False)
+    deal.add_field(name="Customer", value=customer, inline=False)
+    deal.add_field(name="Vehicles", value=vehicles, inline=False)
+    deal.add_field(name="Total Price", value=total_price, inline=False)
+    deal.add_field(name="Ticket", value=ticket_number, inline=False)
+    deal.add_field(name="Current Rank", value=rank, inline=False)
+
+    post_channel = bot.get_channel(1103526122211262565)  # Your final deals channel
+
+    if post_channel:
+        await post_channel.send(content=f"Manual Deal Approved by {ctx.author.mention}:", embed=deal)
+        await ctx.send("✅ Deal posted successfully to marketplace!")
+    else:
+        await ctx.send("❌ Failed to find the marketplace channel. Please check channel ID.")
+
+
 @bot.command()
 async def profit(ctx):
     """Display profit for the bot owner, calculated from today's emails."""
