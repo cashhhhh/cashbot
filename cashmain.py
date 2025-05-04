@@ -2997,6 +2997,96 @@ async def assign_role(ctx, user: discord.Member):
         await ctx.send(f"❌ Unexpected error: {str(e)}")
         logging.error(f"AssignRole Error: {str(e)}")
 
+#website 
+
+
+# =============================
+# 🚀 CashBot + Dashboard Combo (Final Cleaned Version — NO extra bot.run())
+# =============================
+
+import discord
+from discord.ext import commands
+from fastapi import FastAPI, Request, Form
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+import threading
+import uvicorn
+import logging
+import os
+
+# ========== CONFIG ==========
+DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')  # Your token loaded from environment
+
+intents = discord.Intents.default()
+intents.members = True
+intents.guilds = True
+
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+# ========== FASTAPI DASHBOARD ==========
+app = FastAPI()
+templates = Jinja2Templates(directory="templates")
+
+@app.get("/", response_class=HTMLResponse)
+async def home(request: Request):
+    return templates.TemplateResponse("home.html", {"request": request})
+
+@app.get("/remote", response_class=HTMLResponse)
+async def remote(request: Request):
+    return templates.TemplateResponse("remote.html", {"request": request})
+
+@app.post("/remote-action")
+async def remote_action(user_id: str = Form(...), action: str = Form(...)):
+    # Pick the first guild the bot is connected to
+    if not bot.guilds:
+        return HTMLResponse("⚠️ Bot is not in any guilds!", status_code=500)
+    
+    guild = bot.guilds[0]  # Pick first guild
+    try:
+        member = await guild.fetch_member(int(user_id))
+    except Exception as e:
+        return HTMLResponse(f"⚠️ Error fetching member: {e}", status_code=500)
+
+    if action == "mute":
+        mute_role = discord.utils.get(guild.roles, name="Muted")
+        if mute_role:
+            await member.add_roles(mute_role)
+            return RedirectResponse(url="/remote", status_code=303)
+        else:
+            return HTMLResponse("⚠️ No Muted role found.", status_code=500)
+    elif action == "kick":
+        await member.kick(reason="Remote Panel Kick")
+        return RedirectResponse(url="/remote", status_code=303)
+    elif action == "ban":
+        await member.ban(reason="Remote Panel Ban")
+        return RedirectResponse(url="/remote", status_code=303)
+    else:
+        return HTMLResponse("⚠️ Invalid action.", status_code=400)
+
+def start_dashboard():
+    uvicorn.run(app, host="0.0.0.0", port=8012, reload=False)
+
+# ========== BOT EVENTS ==========
+@bot.event
+async def on_ready():
+    print(f"[Discord Bot] Logged in as {bot.user} (ID: {bot.user.id})")
+    print("[Dashboard] Access at http://0.0.0.0:8012/")
+    print("Connected Guilds:")
+    for g in bot.guilds:
+        print(f"- {g.name} (ID: {g.id})")
+
+# ========== START DASHBOARD ==========
+# (No bot.run() here — you already have it in your cashmain)
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    threading.Thread(target=start_dashboard, daemon=True).start()
+
+
+
+
+
+
+
 @bot.command(name='salesreport')
 async def sales_report(ctx):
     """Generate daily activity report"""
