@@ -1014,7 +1014,9 @@ async def post_deal(ctx):
 
     view = ConfirmView(ctx.author)
 
-    await ctx.send(embed=preview, view=view)
+    message = await ctx.send(embed=preview, view=view)
+    view.message = message  # <<<< this saves the message inside the View
+
 
 class ConfirmView(discord.ui.View):
     def __init__(self, author):
