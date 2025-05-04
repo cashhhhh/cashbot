@@ -2827,6 +2827,46 @@ async def copy_roles(ctx):
         logging.error(f"CopyRoles Error: {error_msg}")
         await ctx.send(error_msg)
         await notify_owner(f"CopyRoles failed: {error_msg}")
+# FastAPI server inside your existing bot
+from fastapi import FastAPI, Request
+import uvicorn
+import threading
+
+api_app = FastAPI()
+
+@api_app.post("/ban_user")
+async def ban_user(request: Request):
+    data = await request.json()
+    user_id = int(data.get("user_id"))
+    reason = data.get("reason", "No reason provided")
+
+    guild = discord.utils.get(bot.guilds)  # If you have only 1 server
+    member = guild.get_member(user_id)
+    if member:
+        await member.ban(reason=reason)
+        return {"status": "success", "detail": f"Banned {user_id}"}
+    else:
+        return {"status": "error", "detail": "User not found"}
+
+@api_app.post("/unban_user")
+async def unban_user(request: Request):
+    data = await request.json()
+    user_id = int(data.get("user_id"))
+
+    guild = discord.utils.get(bot.guilds)
+    bans = await guild.bans()
+    for ban_entry in bans:
+        if ban_entry.user.id == user_id:
+            await guild.unban(ban_entry.user)
+            return {"status": "success", "detail": f"Unbanned {user_id}"}
+
+    return {"status": "error", "detail": "User not banned"}
+
+# Start FastAPI in a background thread
+def run_api():
+    uvicorn.run(api_app, host="127.0.0.1", port=5050)
+
+threading.Thread(target=run_api, daemon=True).start()
 
 @bot.command(name='giverole')
 async def give_role(ctx, role_id: str, user: discord.Member):
