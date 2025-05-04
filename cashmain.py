@@ -26,7 +26,7 @@ import json
 from dotenv import load_dotenv
 
 load_dotenv() 
-
+DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 
 
 # Load or create a config file
@@ -69,7 +69,6 @@ OWNER_IDS = [
     '480028928329777163', '123456789012345678', '987654321098765432',
     '230803708034678786'
 ]  # List of owner IDs
-DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 ALERT_CHANNEL_ID = 1223077287457587221
 AWS_INSTANCE_ID = 'i-0c5eefd9c3afd7969'  # Updated instance ID
 # Logging Setup
