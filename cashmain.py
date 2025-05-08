@@ -6,7 +6,7 @@
 
 
 import re
-import os
+import o
 import pickle
 import logging
 import time
@@ -2688,24 +2688,26 @@ async def giftcard(ctx, target_amount: str):
             code_matches = [m.group(1) for m in re.finditer(code_pattern, body, re.IGNORECASE)]
 
             if amount_matches and code_matches:
-                for amount_str, code in zip(amount_matches, code_matches):
-                    try:
-                        amount = float(amount_str)
-                        # Add card if it gets us closer to target amount
-                        if code not in used_codes and (total_found + amount <= target_amount or (not found_cards and amount < target_amount * 1.2)):
-                            found_cards.append((amount, code))
-                            total_found += amount
-                            # Add to used codes with proper format
-                            used_codes.add(code)
-                            try:
-                                with open('used_codes.txt', 'a') as f:
-                                    f.write(f"{code},{amount:.2f},{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                                    f.flush()  # Ensure immediate write to disk
-                            except Exception as e:
-                                logging.error(f"Error logging code: {str(e)}")
-                                await ctx.send("⚠️ Warning: Failed to log code usage")
-                    except ValueError:
-                        continue
+    for amount_str, code in zip(amount_matches, code_matches):
+        if not code:
+            continue  # <-- THIS one line fix prevents crashing
+
+        try:
+            amount = float(amount_str)
+            # Add card if it gets us closer to target amount
+            if code not in used_codes and (total_found + amount <= target_amount or (not found_cards and amount < target_amount * 1.2)):
+                found_cards.append((amount, code))
+                total_found += amount
+                used_codes.add(code)
+                try:
+                    with open('used_codes.txt', 'a') as f:
+                        f.write(f"{code},{amount:.2f},{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                        f.flush()  # Immediate write
+                except Exception as e:
+                    logging.error(f"Error logging code: {str(e)}")
+                    await ctx.send("⚠️ Warning: Failed to log code usage")
+        except ValueError:
+            continue
 
         imap.close()
         imap.logout()
