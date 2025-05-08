@@ -3315,7 +3315,7 @@ async def server_dashboard(ctx):
 
 
 # --- CONFIG ---
-OWNER_IDS = [480028928329777163]  # <- YOUR Discord User ID goes here
+ # <- YOUR Discord User ID goes here
 AUDIT_LOG_FILE = "auditlog.jsonl"
 
 # --- Helper to save to audit log ---
