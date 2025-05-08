@@ -5,6 +5,7 @@
 
 
 
+
 import re
 import os
 import pickle
@@ -67,8 +68,7 @@ SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 TOKEN_PATH = 'token.pickle'
 OWNER_IDS = [
     '480028928329777163', '123456789012345678', '987654321098765432',
-    '230803708034678786'
-]  # List of owner IDs
+    '230803708034678786']  # List of owner IDs
 ALERT_CHANNEL_ID = 1223077287457587221
 AWS_INSTANCE_ID = 'i-0c5eefd9c3afd7969'  # Updated instance ID
 # Logging Setup
@@ -372,7 +372,7 @@ async def checkticket(ctx, amount: float, unread_only: bool = True):
                 logging.error(
                     f"Failed to send traffic alert to {user_id}: {e}")
 
-    allowed_role_ids = [1103522760073945168, 1325902622120738866, 1361045953296990490, 1332736087029710958, 1361231253596278794, 1319913613389074487, 1267783758757757045, 1330907621984833536]
+    allowed_role_ids = [1103522760073945168, 1325902622120738866, 1361045953296990490, 1332736087029710958, 1361231253596278794, 1319913613389074487, 1267783758757757045, 1330907621984833536, 1338483485782048778, 1365072827866288252]
     is_owner = str(ctx.author.id) in OWNER_IDS
     has_role = any(role.id in allowed_role_ids for role in ctx.author.roles)
 
@@ -1014,7 +1014,9 @@ async def post_deal(ctx):
 
     view = ConfirmView(ctx.author)
 
-    await ctx.send(embed=preview, view=view)
+    message = await ctx.send(embed=preview, view=view)
+    view.message = message  # <<<< this saves the message inside the View
+
 
 class ConfirmView(discord.ui.View):
     def __init__(self, author):
@@ -2827,6 +2829,46 @@ async def copy_roles(ctx):
         logging.error(f"CopyRoles Error: {error_msg}")
         await ctx.send(error_msg)
         await notify_owner(f"CopyRoles failed: {error_msg}")
+# FastAPI server inside your existing bot
+from fastapi import FastAPI, Request
+import uvicorn
+import threading
+
+api_app = FastAPI()
+
+@api_app.post("/ban_user")
+async def ban_user(request: Request):
+    data = await request.json()
+    user_id = int(data.get("user_id"))
+    reason = data.get("reason", "No reason provided")
+
+    guild = discord.utils.get(bot.guilds)  # If you have only 1 server
+    member = guild.get_member(user_id)
+    if member:
+        await member.ban(reason=reason)
+        return {"status": "success", "detail": f"Banned {user_id}"}
+    else:
+        return {"status": "error", "detail": "User not found"}
+
+@api_app.post("/unban_user")
+async def unban_user(request: Request):
+    data = await request.json()
+    user_id = int(data.get("user_id"))
+
+    guild = discord.utils.get(bot.guilds)
+    bans = await guild.bans()
+    for ban_entry in bans:
+        if ban_entry.user.id == user_id:
+            await guild.unban(ban_entry.user)
+            return {"status": "success", "detail": f"Unbanned {user_id}"}
+
+    return {"status": "error", "detail": "User not banned"}
+
+# Start FastAPI in a background thread
+def run_api():
+    uvicorn.run(api_app, host="127.0.0.1", port=5050)
+
+threading.Thread(target=run_api, daemon=True).start()
 
 @bot.command(name='giverole')
 async def give_role(ctx, role_id: str, user: discord.Member):
