@@ -2733,9 +2733,10 @@ async def giftcard(ctx, target_amount: str):
             timestamp=datetime.now()
         )
 
-       code_text = "\n".join([f"${amount}: `{code}`" for amount, code in found_cards if code])
-        embed.add_field(name="Available Codes", value=code_text, inline=False)
-        embed.add_field(name="⚠️ Important", value="Keep these codes private and secure!", inline=False)
+            code_text = "\n".join([f"${amount}: `{code}`" for amount, code in found_cards if code])
+            embed.add_field(name="Available Codes", value=code_text, inline=False)
+            embed.add_field(name="⚠️ Important", value="Keep these codes private and secure!", inline=False)
+
 
         # Send only in DM
         try:
