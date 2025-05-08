@@ -6,7 +6,6 @@
 
 
 import re
-import o
 import pickle
 import logging
 import time
