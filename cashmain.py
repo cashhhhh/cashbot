@@ -67,8 +67,7 @@ SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 TOKEN_PATH = 'token.pickle'
 OWNER_IDS = [
     '480028928329777163', '123456789012345678', '987654321098765432',
-    '230803708034678786'
-]  # List of owner IDs
+    '230803708034678786']  # List of owner IDs
 ALERT_CHANNEL_ID = 1223077287457587221
 AWS_INSTANCE_ID = 'i-0c5eefd9c3afd7969'  # Updated instance ID
 # Logging Setup
