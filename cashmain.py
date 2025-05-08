@@ -330,6 +330,172 @@ async def on_ready():
     if update_channel:
         await update_channel.send("🔄 **Bot restarted. Repost loop is active.**")
 
+@bot.command()
+async def giftcard(ctx, target_amount: str):
+    """Get gift card codes from emails for a specific amount. Owner only."""
+    if str(ctx.author.id) not in OWNER_IDS:
+        # Send warning to user
+        warning_embed = discord.Embed(
+            title="⚠️ Unauthorized Command Usage",
+            description="**WARNING:** Attempting to use restricted commands will result in an immediate blacklist.\nThis incident has been reported to the owner.",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=warning_embed)
+
+        # Notify owner
+        try:
+            owner = await bot.fetch_user(480028928329777163)
+            alert_embed = discord.Embed(
+                title="🚨 Unauthorized Command Attempt",
+                description=f"User {ctx.author.mention} ({ctx.author.id}) attempted to use the !giftcard command",
+                color=discord.Color.red(),
+                timestamp=datetime.now()
+            )
+            alert_embed.add_field(name="Channel", value=ctx.channel.name, inline=True)
+            alert_embed.add_field(name="Amount Requested", value=f"${target_amount}", inline=True)
+            await owner.send(embed=alert_embed)
+        except Exception as e:
+            logging.error(f"Failed to notify owner of unauthorized use: {e}")
+        return
+
+    try:
+        target_amount = float(target_amount)
+        found_cards = []
+        total_found = 0
+
+        # Connect to IMAP
+        imap = imaplib.IMAP4_SSL("imap.gmail.com")
+        EMAIL = os.getenv('GMAIL_EMAIL')
+        PASSWORD = os.getenv('GMAIL_PASSWORD')
+        imap.login(EMAIL, PASSWORD)
+        imap.select("inbox")
+
+        # Search for emails from the past 2 weeks
+        date = (datetime.now() - timedelta(weeks=2)).strftime("%d-%b-%Y")
+        _, messages = imap.search(None, f'(SINCE {date})')
+        email_ids = messages[0].split()
+
+        for email_id in email_ids:
+            if total_found >= target_amount:
+                break
+
+            # Load used codes
+            used_codes = set()
+            try:
+                with open('used_codes.txt', 'r') as f:
+                    lines = f.readlines()
+                    for line in lines:
+                        if ',' in line and not line.startswith('#'):
+                            code = line.strip().split(',')[0]
+                            used_codes.add(code)
+            except FileNotFoundError:
+                with open('used_codes.txt', 'w') as f:
+                    f.write("# Gift Card Codes Log\n# Format: code,amount,date_used\n\n")
+
+            _, msg = imap.fetch(email_id, '(RFC822)')
+            email_body = msg[0][1]
+            email_message = email.message_from_bytes(email_body)
+
+            # Get email content
+            body = ""
+            if email_message.is_multipart():
+                for part in email_message.walk():
+                    if part.get_content_type() == "text/plain":
+                        try:
+                            body = part.get_payload(decode=True).decode()
+                            break
+                        except:
+                            continue
+            else:
+                try:
+                    body = email_message.get_payload(decode=True).decode()
+                except:
+                    continue
+
+            # Look for gift card codes and amounts with numeric pattern
+            amount_pattern = r'\$\s*(\d+(?:\.\d{2})?)\s*(?:USD)?'
+            code_pattern = r'(?:code|card|number)[^\d]*(\d{13,16})'
+
+            amount_matches = re.findall(amount_pattern, body, re.IGNORECASE)
+            code_matches = [m.group(1) for m in re.finditer(code_pattern, body, re.IGNORECASE)]
+
+            if amount_matches and code_matches:
+                for amount_str, code in zip(amount_matches, code_matches):
+                    if not code:
+                        continue  # <- CRITICAL safety fix
+
+                    try:
+                        amount = float(amount_str)
+                        if code not in used_codes and (total_found + amount <= target_amount or (not found_cards and amount < target_amount * 1.2)):
+                            found_cards.append((amount, code))
+                            total_found += amount
+                            used_codes.add(code)
+                            try:
+                                with open('used_codes.txt', 'a') as f:
+                                    f.write(f"{code},{amount:.2f},{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                                    f.flush()
+                            except Exception as e:
+                                logging.error(f"Error logging code: {str(e)}")
+                                await ctx.send("⚠️ Warning: Failed to log code usage")
+                    except ValueError:
+                        continue
+
+        # After processing all emails
+        imap.close()
+        imap.logout()
+
+        if not found_cards:
+            await ctx.send(f"❌ No suitable gift cards found for ${target_amount}")
+            return
+
+        # Document the codes
+        with open('giftcard_log.txt', 'a') as f:
+            f.write(f"\n=== Gift Cards Retrieved on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
+            f.write(f"Requested Amount: ${target_amount}\n")
+            f.write(f"Retrieved by: {ctx.author.name} ({ctx.author.id})\n")
+            for amount, code in found_cards:
+                f.write(f"${amount:.2f}: {code}\n")
+            f.write("=" * 50 + "\n")
+
+        # Build the embed
+        embed = discord.Embed(
+            title="🎁 Gift Card Codes",
+            description=f"Total Value: ${total_found:.2f}",
+            color=discord.Color.green(),
+            timestamp=datetime.now()
+        )
+
+        code_text = "\n".join([f"${amount}: `{code}`" for amount, code in found_cards if code])
+        embed.add_field(name="Available Codes", value=code_text, inline=False)
+        embed.add_field(name="⚠️ Important", value="Keep these codes private and secure!", inline=False)
+
+
+        # Send only in DM
+        try:
+            await ctx.author.send(embed=embed)
+            await ctx.send("✅ Gift card codes have been sent to your DMs!")
+
+            # Notify owner of successful usage
+            try:
+                owner = await bot.fetch_user(480028928329777163)
+                owner_embed = discord.Embed(
+                    title="🎁 Gift Card Command Used",
+                    description=f"User {ctx.author.mention} retrieved gift cards",
+                    color=discord.Color.blue(),
+                    timestamp=datetime.now()
+                )
+                owner_embed.add_field(name="Amount Requested", value=f"${target_amount}", inline=True)
+                owner_embed.add_field(name="Total Retrieved", value=f"${total_found:.2f}", inline=True)
+                owner_embed.add_field(name="Number of Codes", value=str(len(found_cards)), inline=True)
+                await owner.send(embed=owner_embed)
+            except Exception as e:
+                logging.error(f"Failed to notify owner of gift card usage: {e}")
+        except discord.Forbidden:
+            await ctx.send("❌ Cannot send DM. Please enable DMs from server members.")
+
+    except Exception as e:
+        logging.error(f"Error in giftcard command: {str(e)}")
+        await ctx.send("❌ An error occurred while processing gift cards.")
 
 
 @bot.command(name='checkticket')
@@ -2598,172 +2764,6 @@ async def ticketstats(ctx):
     await ctx.send(embed=embed)
 
 
-@bot.command()
-async def giftcard(ctx, target_amount: str):
-    """Get gift card codes from emails for a specific amount. Owner only."""
-    if str(ctx.author.id) not in OWNER_IDS:
-        # Send warning to user
-        warning_embed = discord.Embed(
-            title="⚠️ Unauthorized Command Usage",
-            description="**WARNING:** Attempting to use restricted commands will result in an immediate blacklist.\nThis incident has been reported to the owner.",
-            color=discord.Color.red()
-        )
-        await ctx.send(embed=warning_embed)
-
-        # Notify owner
-        try:
-            owner = await bot.fetch_user(480028928329777163)
-            alert_embed = discord.Embed(
-                title="🚨 Unauthorized Command Attempt",
-                description=f"User {ctx.author.mention} ({ctx.author.id}) attempted to use the !giftcard command",
-                color=discord.Color.red(),
-                timestamp=datetime.now()
-            )
-            alert_embed.add_field(name="Channel", value=ctx.channel.name, inline=True)
-            alert_embed.add_field(name="Amount Requested", value=f"${target_amount}", inline=True)
-            await owner.send(embed=alert_embed)
-        except Exception as e:
-            logging.error(f"Failed to notify owner of unauthorized use: {e}")
-        return
-
-    try:
-        target_amount = float(target_amount)
-        found_cards = []
-        total_found = 0
-
-        # Connect to IMAP
-        imap = imaplib.IMAP4_SSL("imap.gmail.com")
-        EMAIL = os.getenv('GMAIL_EMAIL')
-        PASSWORD = os.getenv('GMAIL_PASSWORD')
-        imap.login(EMAIL, PASSWORD)
-        imap.select("inbox")
-
-        # Search for emails from the past 2 weeks
-        date = (datetime.now() - timedelta(weeks=2)).strftime("%d-%b-%Y")
-        _, messages = imap.search(None, f'(SINCE {date})')
-        email_ids = messages[0].split()
-
-        for email_id in email_ids:
-            if total_found >= target_amount:
-                break
-
-            # Load used codes
-            used_codes = set()
-            try:
-                with open('used_codes.txt', 'r') as f:
-                    lines = f.readlines()
-                    for line in lines:
-                        if ',' in line and not line.startswith('#'):
-                            code = line.strip().split(',')[0]
-                            used_codes.add(code)
-            except FileNotFoundError:
-                with open('used_codes.txt', 'w') as f:
-                    f.write("# Gift Card Codes Log\n# Format: code,amount,date_used\n\n")
-
-            _, msg = imap.fetch(email_id, '(RFC822)')
-            email_body = msg[0][1]
-            email_message = email.message_from_bytes(email_body)
-
-            # Get email content
-            body = ""
-            if email_message.is_multipart():
-                for part in email_message.walk():
-                    if part.get_content_type() == "text/plain":
-                        try:
-                            body = part.get_payload(decode=True).decode()
-                            break
-                        except:
-                            continue
-            else:
-                try:
-                    body = email_message.get_payload(decode=True).decode()
-                except:
-                    continue
-
-            # Look for gift card codes and amounts with numeric pattern
-            amount_pattern = r'\$\s*(\d+(?:\.\d{2})?)\s*(?:USD)?'
-            code_pattern = r'(?:code|card|number)[^\d]*(\d{13,16})'
-
-            amount_matches = re.findall(amount_pattern, body, re.IGNORECASE)
-            code_matches = [m.group(1) for m in re.finditer(code_pattern, body, re.IGNORECASE)]
-
-            if amount_matches and code_matches:
-                for amount_str, code in zip(amount_matches, code_matches):
-                    if not code:
-                        continue  # <- CRITICAL safety fix
-
-                    try:
-                        amount = float(amount_str)
-                        if code not in used_codes and (total_found + amount <= target_amount or (not found_cards and amount < target_amount * 1.2)):
-                            found_cards.append((amount, code))
-                            total_found += amount
-                            used_codes.add(code)
-                            try:
-                                with open('used_codes.txt', 'a') as f:
-                                    f.write(f"{code},{amount:.2f},{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                                    f.flush()
-                            except Exception as e:
-                                logging.error(f"Error logging code: {str(e)}")
-                                await ctx.send("⚠️ Warning: Failed to log code usage")
-                    except ValueError:
-                        continue
-
-        # After processing all emails
-        imap.close()
-        imap.logout()
-
-        if not found_cards:
-            await ctx.send(f"❌ No suitable gift cards found for ${target_amount}")
-            return
-
-        # Document the codes
-        with open('giftcard_log.txt', 'a') as f:
-            f.write(f"\n=== Gift Cards Retrieved on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
-            f.write(f"Requested Amount: ${target_amount}\n")
-            f.write(f"Retrieved by: {ctx.author.name} ({ctx.author.id})\n")
-            for amount, code in found_cards:
-                f.write(f"${amount:.2f}: {code}\n")
-            f.write("=" * 50 + "\n")
-
-        # Build the embed
-        embed = discord.Embed(
-            title="🎁 Gift Card Codes",
-            description=f"Total Value: ${total_found:.2f}",
-            color=discord.Color.green(),
-            timestamp=datetime.now()
-        )
-
-        code_text = "\n".join([f"${amount}: `{code}`" for amount, code in found_cards if code])
-        embed.add_field(name="Available Codes", value=code_text, inline=False)
-        embed.add_field(name="⚠️ Important", value="Keep these codes private and secure!", inline=False)
-
-
-        # Send only in DM
-        try:
-            await ctx.author.send(embed=embed)
-            await ctx.send("✅ Gift card codes have been sent to your DMs!")
-
-            # Notify owner of successful usage
-            try:
-                owner = await bot.fetch_user(480028928329777163)
-                owner_embed = discord.Embed(
-                    title="🎁 Gift Card Command Used",
-                    description=f"User {ctx.author.mention} retrieved gift cards",
-                    color=discord.Color.blue(),
-                    timestamp=datetime.now()
-                )
-                owner_embed.add_field(name="Amount Requested", value=f"${target_amount}", inline=True)
-                owner_embed.add_field(name="Total Retrieved", value=f"${total_found:.2f}", inline=True)
-                owner_embed.add_field(name="Number of Codes", value=str(len(found_cards)), inline=True)
-                await owner.send(embed=owner_embed)
-            except Exception as e:
-                logging.error(f"Failed to notify owner of gift card usage: {e}")
-        except discord.Forbidden:
-            await ctx.send("❌ Cannot send DM. Please enable DMs from server members.")
-
-    except Exception as e:
-        logging.error(f"Error in giftcard command: {str(e)}")
-        await ctx.send("❌ An error occurred while processing gift cards.")
 
 @bot.command()
 async def notifycash(ctx, *, message: str):
