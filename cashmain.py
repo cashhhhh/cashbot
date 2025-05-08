@@ -5,7 +5,6 @@
 
 
 
-
 import re
 import os
 import pickle
@@ -26,8 +25,8 @@ import psutil
 import json
 from dotenv import load_dotenv
 
-load_dotenv() 
-DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
+
+
 
 
 # Load or create a config file
@@ -66,7 +65,11 @@ activity_log = {}
 # Configuration
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 TOKEN_PATH = 'token.pickle'
-OWNER_IDS = ['480028928329777163', '123456789012345678', '987654321098765432', '230803708034678786']  # List of owner IDs
+OWNER_IDS = [
+    '480028928329777163', '123456789012345678', '987654321098765432',
+    '230803708034678786'
+]  # List of owner IDs
+DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 ALERT_CHANNEL_ID = 1223077287457587221
 AWS_INSTANCE_ID = 'i-0c5eefd9c3afd7969'  # Updated instance ID
 # Logging Setup
@@ -330,172 +333,6 @@ async def on_ready():
     if update_channel:
         await update_channel.send("🔄 **Bot restarted. Repost loop is active.**")
 
-@bot.command()
-async def giftcard(ctx, target_amount: str):
-    """Get gift card codes from emails for a specific amount. Owner only."""
-    if str(ctx.author.id) not in OWNER_IDS:
-        # Send warning to user
-        warning_embed = discord.Embed(
-            title="⚠️ Unauthorized Command Usage",
-            description="**WARNING:** Attempting to use restricted commands will result in an immediate blacklist.\nThis incident has been reported to the owner.",
-            color=discord.Color.red()
-        )
-        await ctx.send(embed=warning_embed)
-
-        # Notify owner
-        try:
-            owner = await bot.fetch_user(480028928329777163)
-            alert_embed = discord.Embed(
-                title="🚨 Unauthorized Command Attempt",
-                description=f"User {ctx.author.mention} ({ctx.author.id}) attempted to use the !giftcard command",
-                color=discord.Color.red(),
-                timestamp=datetime.now()
-            )
-            alert_embed.add_field(name="Channel", value=ctx.channel.name, inline=True)
-            alert_embed.add_field(name="Amount Requested", value=f"${target_amount}", inline=True)
-            await owner.send(embed=alert_embed)
-        except Exception as e:
-            logging.error(f"Failed to notify owner of unauthorized use: {e}")
-        return
-
-    try:
-        target_amount = float(target_amount)
-        found_cards = []
-        total_found = 0
-
-        # Connect to IMAP
-        imap = imaplib.IMAP4_SSL("imap.gmail.com")
-        EMAIL = os.getenv('GMAIL_EMAIL')
-        PASSWORD = os.getenv('GMAIL_PASSWORD')
-        imap.login(EMAIL, PASSWORD)
-        imap.select("inbox")
-
-        # Search for emails from the past 2 weeks
-        date = (datetime.now() - timedelta(weeks=2)).strftime("%d-%b-%Y")
-        _, messages = imap.search(None, f'(SINCE {date})')
-        email_ids = messages[0].split()
-
-        for email_id in email_ids:
-            if total_found >= target_amount:
-                break
-
-            # Load used codes
-            used_codes = set()
-            try:
-                with open('used_codes.txt', 'r') as f:
-                    lines = f.readlines()
-                    for line in lines:
-                        if ',' in line and not line.startswith('#'):
-                            code = line.strip().split(',')[0]
-                            used_codes.add(code)
-            except FileNotFoundError:
-                with open('used_codes.txt', 'w') as f:
-                    f.write("# Gift Card Codes Log\n# Format: code,amount,date_used\n\n")
-
-            _, msg = imap.fetch(email_id, '(RFC822)')
-            email_body = msg[0][1]
-            email_message = email.message_from_bytes(email_body)
-
-            # Get email content
-            body = ""
-            if email_message.is_multipart():
-                for part in email_message.walk():
-                    if part.get_content_type() == "text/plain":
-                        try:
-                            body = part.get_payload(decode=True).decode()
-                            break
-                        except:
-                            continue
-            else:
-                try:
-                    body = email_message.get_payload(decode=True).decode()
-                except:
-                    continue
-
-            # Look for gift card codes and amounts with numeric pattern
-            amount_pattern = r'\$\s*(\d+(?:\.\d{2})?)\s*(?:USD)?'
-            code_pattern = r'(?:code|card|number)[^\d]*(\d{13,16})'
-
-            amount_matches = re.findall(amount_pattern, body, re.IGNORECASE)
-            code_matches = [m.group(1) for m in re.finditer(code_pattern, body, re.IGNORECASE)]
-
-            if amount_matches and code_matches:
-                for amount_str, code in zip(amount_matches, code_matches):
-                    if not code:
-                        continue  # <- CRITICAL safety fix
-
-                    try:
-                        amount = float(amount_str)
-                        if code not in used_codes and (total_found + amount <= target_amount or (not found_cards and amount < target_amount * 1.2)):
-                            found_cards.append((amount, code))
-                            total_found += amount
-                            used_codes.add(code)
-                            try:
-                                with open('used_codes.txt', 'a') as f:
-                                    f.write(f"{code},{amount:.2f},{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                                    f.flush()
-                            except Exception as e:
-                                logging.error(f"Error logging code: {str(e)}")
-                                await ctx.send("⚠️ Warning: Failed to log code usage")
-                    except ValueError:
-                        continue
-
-        # After processing all emails
-        imap.close()
-        imap.logout()
-
-        if not found_cards:
-            await ctx.send(f"❌ No suitable gift cards found for ${target_amount}")
-            return
-
-        # Document the codes
-        with open('giftcard_log.txt', 'a') as f:
-            f.write(f"\n=== Gift Cards Retrieved on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
-            f.write(f"Requested Amount: ${target_amount}\n")
-            f.write(f"Retrieved by: {ctx.author.name} ({ctx.author.id})\n")
-            for amount, code in found_cards:
-                f.write(f"${amount:.2f}: {code}\n")
-            f.write("=" * 50 + "\n")
-
-        # Build the embed
-        embed = discord.Embed(
-            title="🎁 Gift Card Codes",
-            description=f"Total Value: ${total_found:.2f}",
-            color=discord.Color.green(),
-            timestamp=datetime.now()
-        )
-
-        code_text = "\n".join([f"${amount}: `{code}`" for amount, code in found_cards if code])
-        embed.add_field(name="Available Codes", value=code_text, inline=False)
-        embed.add_field(name="⚠️ Important", value="Keep these codes private and secure!", inline=False)
-
-
-        # Send only in DM
-        try:
-            await ctx.author.send(embed=embed)
-            await ctx.send("✅ Gift card codes have been sent to your DMs!")
-
-            # Notify owner of successful usage
-            try:
-                owner = await bot.fetch_user(480028928329777163)
-                owner_embed = discord.Embed(
-                    title="🎁 Gift Card Command Used",
-                    description=f"User {ctx.author.mention} retrieved gift cards",
-                    color=discord.Color.blue(),
-                    timestamp=datetime.now()
-                )
-                owner_embed.add_field(name="Amount Requested", value=f"${target_amount}", inline=True)
-                owner_embed.add_field(name="Total Retrieved", value=f"${total_found:.2f}", inline=True)
-                owner_embed.add_field(name="Number of Codes", value=str(len(found_cards)), inline=True)
-                await owner.send(embed=owner_embed)
-            except Exception as e:
-                logging.error(f"Failed to notify owner of gift card usage: {e}")
-        except discord.Forbidden:
-            await ctx.send("❌ Cannot send DM. Please enable DMs from server members.")
-
-    except Exception as e:
-        logging.error(f"Error in giftcard command: {str(e)}")
-        await ctx.send("❌ An error occurred while processing gift cards.")
 
 
 @bot.command(name='checkticket')
@@ -536,7 +373,7 @@ async def checkticket(ctx, amount: float, unread_only: bool = True):
                 logging.error(
                     f"Failed to send traffic alert to {user_id}: {e}")
 
-    allowed_role_ids = [1103522760073945168, 1325902622120738866, 1361045953296990490, 1332736087029710958, 1361231253596278794, 1319913613389074487, 1267783758757757045, 1330907621984833536, 1338483485782048778, 1365072827866288252]
+    allowed_role_ids = [1103522760073945168, 1325902622120738866, 1361045953296990490, 1332736087029710958, 1361231253596278794, 1319913613389074487, 1267783758757757045, 1330907621984833536]
     is_owner = str(ctx.author.id) in OWNER_IDS
     has_role = any(role.id in allowed_role_ids for role in ctx.author.roles)
 
@@ -1107,314 +944,6 @@ async def apply(ctx):
     except Exception:
         await ctx.send("❌ Failed to DM you. Please open your DMs.")
 
-import discord
-from discord.ext import commands
-import asyncio
-from datetime import datetime
-
-POST_CHANNEL_ID = 1103526122211262565  # Correct marketplace channel
-CASH_BOT_ID = 1326838893420613652  # <<< REPLACE THIS with your real Cash Bot's user ID
-
-@bot.command(name="postdeal")
-async def post_deal(ctx):
-    if not isinstance(ctx.channel, discord.TextChannel):
-        await ctx.send("This command must be used inside a ticket channel.")
-        return
-
-    await ctx.send("Checking recent messages for approved Gift Card...")
-
-    # Check last 20 messages for Cash Bot approval
-    messages = [msg async for msg in ctx.channel.history(limit=20)]
-    amount_found = None
-
-    for msg in messages:
-        if msg.author.id == CASH_BOT_ID:
-            if msg.embeds:
-                embed = msg.embeds[0]
-                for field in embed.fields:
-                    if "Gift Card Found" in field.value:
-                        # Extract amount from embed fields
-                        for sub_field in embed.fields:
-                            if "Amount" in sub_field.name:
-                                amount_found = sub_field.value.strip()
-                                break
-            if amount_found:
-                break
-
-    if not amount_found:
-        await ctx.send(f"Pending Management Approval. <@480028928329777163>")
-        return
-
-    # If approved, collect additional info
-    def check_author(m):
-        return m.author == ctx.author and m.channel == ctx.channel
-
-    try:
-        await ctx.send("Enter the Customer Name:")
-        customer = (await bot.wait_for("message", check=check_author, timeout=120)).content
-
-        await ctx.send("Enter the Vehicle(s):")
-        vehicles = (await bot.wait_for("message", check=check_author, timeout=120)).content
-
-        await ctx.send("Enter your Current Rank:")
-        rank = (await bot.wait_for("message", check=check_author, timeout=120)).content
-
-    except asyncio.TimeoutError:
-        await ctx.send("You took too long to respond. Please try again.")
-        return
-
-    # Extract Ticket Number from channel name
-    ticket_number = ctx.channel.name.split("-")[-1]
-    today_date = datetime.utcnow().strftime("%m/%d/%y")
-
-    # Build the preview embed
-    preview = discord.Embed(title="Deal Preview", color=0x00ff00)
-    preview.add_field(name="Date", value=today_date, inline=False)
-    preview.add_field(name="Customer", value=customer, inline=False)
-    preview.add_field(name="Vehicles", value=vehicles, inline=False)
-    preview.add_field(name="Total Price", value=amount_found, inline=False)
-    preview.add_field(name="Ticket", value=ticket_number, inline=False)
-    preview.add_field(name="Current Rank", value=rank, inline=False)
-
-    view = ConfirmView(ctx.author)
-
-    message = await ctx.send(embed=preview, view=view)
-    view.message = message  # <<<< this saves the message inside the View
-
-
-class ConfirmView(discord.ui.View):
-    def __init__(self, author):
-        super().__init__(timeout=60)
-        self.author = author
-
-    @discord.ui.button(label="Approve", style=discord.ButtonStyle.success)
-    async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user != self.author:
-            await interaction.response.send_message("Only the salesman who started the post can approve it.", ephemeral=True)
-            return
-
-        post_channel = bot.get_channel(POST_CHANNEL_ID)
-        if not post_channel:
-            await interaction.response.send_message("Failed to find post channel.", ephemeral=True)
-            return
-
-        await post_channel.send(content=f"Approved Deal posted by {self.author.mention}:", embed=self.message.embeds[0])
-        await interaction.response.send_message("Deal posted successfully.", ephemeral=True)
-        self.stop()
-
-    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger)
-    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user != self.author:
-            await interaction.response.send_message("Only the salesman who started the post can cancel it.", ephemeral=True)
-            return
-        await interaction.response.send_message("Cancelled deal posting.", ephemeral=True)
-        self.stop()
-
-# Do not forget to merge this properly under your existing bot instance and event loop.
-import discord
-from discord.ext import commands
-import re
-
-# --- CONFIGURATION ---
-POST_CHANNEL_ID = 1103526122211262565  # Your deals channel
-BOT_USER_ID = 1326838893420613652        # <<< REPLACE with your actual Cash Bot's ID
-
-# Role to commission mapping
-ROLE_COMMISSIONS = {
-    "Trial Salesman": 0,
-    "Novice Salesman": 10,
-    "Jr. Salesman": 20,
-    "Senior Salesman": 25,
-    "Pro Salesman": 30,
-    "Expert Salesman": 33,
-}
-
-@bot.hybrid_command(name="logcommission", description="Calculate a salesman's total deals and commission based on real roles.")
-async def logcommission(ctx, member: discord.Member = None):
-    if member is None:
-        member = ctx.author
-
-    post_channel = bot.get_channel(POST_CHANNEL_ID)
-    if post_channel is None:
-        await ctx.send("Error: Could not find the post channel.")
-        return
-
-    await ctx.send(f"Calculating commissions for {member.mention}, please wait...")
-
-    # Fetch last 1200 messages
-    messages = [msg async for msg in post_channel.history(limit=1200)]
-
-    total_deals = 0
-    total_sales = 0
-
-    for msg in messages:
-        if msg.author.id != BOT_USER_ID:
-            continue  # Only Cash Bot messages
-        if not msg.embeds:
-            continue  # Must have an embed
-
-        embed = msg.embeds[0]
-
-        if embed.title != "Approved Deal":
-            continue  # Only process real deal posts
-
-        # Match based on message content mention
-        if member.mention not in (msg.content or ""):
-            continue
-
-        # Extract price from embed field
-        price = None
-        for field in embed.fields:
-            if "Total Price" in field.name:
-                match = re.search(r'\$?([0-9]+)', field.value)
-                if match:
-                    price = int(match.group(1))
-                break
-
-        if price is not None:
-            total_deals += 1
-            total_sales += price
-
-    # Determine commission rate based on user's roles
-    commission_rate = 0
-    user_roles = [role.name for role in member.roles]
-
-    for role_name, rate in ROLE_COMMISSIONS.items():
-        if role_name in user_roles:
-            commission_rate = rate
-            break
-
-    commission_earned = int(total_sales * (commission_rate / 100))
-
-    # Build final embed report
-    embed = discord.Embed(title=f"Commission Report: {member.display_name}", color=0x00ff00)
-    embed.add_field(name="Total Deals Closed", value=total_deals, inline=False)
-    embed.add_field(name="Total Sales Volume", value=f"${total_sales}", inline=False)
-    embed.add_field(name="Current Role", value=next((r for r in user_roles if r in ROLE_COMMISSIONS), "Unknown"), inline=False)
-    embed.add_field(name="Commission Rate", value=f"{commission_rate}%", inline=False)
-    embed.add_field(name="Total Commission Earned", value=f"${commission_earned}", inline=False)
-
-    await ctx.send(embed=embed)
-
-# --- REMEMBER ---
-# Replace BOT_USER_ID with your real Cash Bot ID.
-# Ensure the bot has permissions: Read Message History, Read Messages, Send Messages.
-
-import discord
-from discord.ext import commands
-from datetime import datetime, timedelta
-
-TARGET_USER_ID = 480028928329777163  # Your ID (Cash)
-POST_CHANNEL_ID = 1362557854208491630  # Where to repost found messages
-
-@bot.hybrid_command(name="searchcash", description="Pulls all messages mentioning Cash or 'cash' in last 4 days.")
-async def searchcash(ctx):
-    await ctx.send("Searching messages, please wait...")
-
-    repost_channel = bot.get_channel(POST_CHANNEL_ID)
-    if repost_channel is None:
-        await ctx.send("Error: Could not find the repost channel.")
-        return
-
-    four_days_ago = datetime.utcnow() - timedelta(days=4)
-    found_messages = []
-
-    for channel in ctx.guild.text_channels:
-        try:
-            async for msg in channel.history(after=four_days_ago, limit=None):
-                if msg.author.bot:
-                    continue  # Ignore bot messages
-
-                # Check if Cash is mentioned or "cash" appears in message content
-                if (any(user.id == TARGET_USER_ID for user in msg.mentions)) or ("cash" in msg.content.lower()):
-                    found_messages.append(msg)
-
-                if len(found_messages) >= 75:
-                    break
-            if len(found_messages) >= 75:
-                break
-        except Exception as e:
-            print(f"Failed to read {channel.name}: {e}")
-            continue
-
-    if not found_messages:
-        await ctx.send("No messages mentioning you or 'cash' found in the last 4 days.")
-        return
-
-    await ctx.send(f"Found {len(found_messages)} messages. Posting them now...")
-
-    for msg in found_messages:
-        jump_link = msg.jump_url
-        content_preview = msg.content if len(msg.content) < 500 else msg.content[:500] + "..."
-
-        embed = discord.Embed(title=f"Mention by {msg.author.display_name}", description=content_preview, color=0x3498db)
-        embed.add_field(name="Channel", value=msg.channel.mention, inline=True)
-        embed.add_field(name="[View Message]", value=f"[Jump to Message]({jump_link})", inline=True)
-        embed.set_footer(text=f"Sent at {msg.created_at.strftime('%Y-%m-%d %H:%M:%S')} UTC")
-
-        await repost_channel.send(embed=embed)
-
-    await ctx.send("Finished posting all found messages!")
-
-# --- NOTES ---
-# Make sure your bot has:
-# - Read Message History
-# - Read Messages
-# - Send Messages
-# - Embed Links permissions in the repost channel.
-
-
-@bot.hybrid_command(name="approvepending", description="Manually approve a pending deal posting.")
-async def approve_pending(ctx: commands.Context):
-    # Only allow specific user to use this
-    if ctx.author.id != 480028928329777163:  # YOUR USER ID
-        await ctx.send("You do not have permission to approve pending deals.", ephemeral=True)
-        return
-
-    await ctx.send("Manually approving pending deal. Please provide the following:")
-
-    def check_author(m):
-        return m.author == ctx.author and m.channel == ctx.channel
-
-    try:
-        await ctx.send("Enter the Customer Name:")
-        customer = (await bot.wait_for("message", check=check_author, timeout=120)).content
-
-        await ctx.send("Enter the Vehicle(s):")
-        vehicles = (await bot.wait_for("message", check=check_author, timeout=120)).content
-
-        await ctx.send("Enter your Current Rank:")
-        rank = (await bot.wait_for("message", check=check_author, timeout=120)).content
-
-    except asyncio.TimeoutError:
-        await ctx.send("You took too long to respond. Please try again.")
-        return
-
-    # Extract Ticket Number from channel name
-    ticket_number = ctx.channel.name.split("-")[-1]
-    today_date = datetime.utcnow().strftime("%m/%d/%y")
-
-    # Since this is a manual approve, no auto amount from Gift Card
-    await ctx.send("Enter the Total Price (e.g., $30):")
-    total_price = (await bot.wait_for("message", check=check_author, timeout=120)).content
-
-    # Build the final deal embed
-    deal = discord.Embed(title="Approved Deal", color=0x00ff00)
-    deal.add_field(name="Date", value=today_date, inline=False)
-    deal.add_field(name="Customer", value=customer, inline=False)
-    deal.add_field(name="Vehicles", value=vehicles, inline=False)
-    deal.add_field(name="Total Price", value=total_price, inline=False)
-    deal.add_field(name="Ticket", value=ticket_number, inline=False)
-    deal.add_field(name="Current Rank", value=rank, inline=False)
-
-    post_channel = bot.get_channel(1103526122211262565)  # Your final deals channel
-
-    if post_channel:
-        await post_channel.send(content=f"Manual Deal Approved by {ctx.author.mention}:", embed=deal)
-        await ctx.send("✅ Deal posted successfully to marketplace!")
-    else:
-        await ctx.send("❌ Failed to find the marketplace channel. Please check channel ID.")
-
 
 @bot.command()
 async def profit(ctx):
@@ -1613,147 +1142,6 @@ async def global_unban(ctx, user_id: int):
     response = "\n".join(results)
     await ctx.send(f"**🌎 Global Unban Report:**\n{response}")
 
-import discord
-from discord.ext import commands
-from discord import app_commands
-import asyncio
-from datetime import datetime, timedelta
-
-# CONFIG
-OWNER_ID = 480028928329777163  # Your Discord user ID
-SALES_CHANNEL_ID = 1103526122211262565  # Your sales post channel
-TICKET_CATEGORY_ID = 123456789012345678  # Your ticket category (update with real one)
-POST_CHANNEL_ID = 1103526122211262565  # Deals channel for counting
-ROLE_REQUEST_CHANNEL_ID = 1362826410133295326  # Example role request channel
-MENTION_TARGET_ID = 480028928329777163  # You (Cash)
-
-class DashboardView(discord.ui.View):
-    def __init__(self, embeds):
-        super().__init__(timeout=300)
-        self.embeds = embeds
-        self.index = 0
-
-    @discord.ui.button(label="⬅️ Back", style=discord.ButtonStyle.secondary)
-    async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id != OWNER_ID:
-            await interaction.response.send_message("You can't control this.", ephemeral=True)
-            return
-        self.index = (self.index - 1) % len(self.embeds)
-        await interaction.response.edit_message(embed=self.embeds[self.index], view=self)
-
-    @discord.ui.button(label="➡️ Next", style=discord.ButtonStyle.secondary)
-    async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id != OWNER_ID:
-            await interaction.response.send_message("You can't control this.", ephemeral=True)
-            return
-        self.index = (self.index + 1) % len(self.embeds)
-        await interaction.response.edit_message(embed=self.embeds[self.index], view=self)
-
-    @discord.ui.button(label="Panic Lock Server", style=discord.ButtonStyle.danger)
-    async def panic(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id != OWNER_ID:
-            await interaction.response.send_message("You can't control this.", ephemeral=True)
-            return
-        await interaction.response.send_message("\u26a0\ufe0f Panic Lock Triggered! (Placeholder action)", ephemeral=True)
-
-@bot.command(name="operationsdashboard")
-async def operationsdashboard(ctx):
-    if ctx.author.id != OWNER_ID:
-        await ctx.send("You do not have permission to run this.")
-        return
-
-    await ctx.send("\u23f3 Gathering full operational data... Please wait...")
-
-    sales_channel = bot.get_channel(SALES_CHANNEL_ID)
-    post_channel = bot.get_channel(POST_CHANNEL_ID)
-
-    now = datetime.utcnow()
-    yesterday = now - timedelta(days=1)
-    week = now - timedelta(days=7)
-
-    # --- SALES DATA ---
-    last_24h_sales = 0
-    last_7d_sales = 0
-    deal_count_24h = 0
-    deal_count_7d = 0
-
-    if post_channel:
-        async for msg in post_channel.history(after=week, limit=1200):
-            if msg.author.bot and msg.embeds:
-                embed = msg.embeds[0]
-                for field in embed.fields:
-                    if "Total Price" in field.name:
-                        try:
-                            amount = int(field.value.replace("$", "").strip())
-                            if msg.created_at > yesterday:
-                                last_24h_sales += amount
-                                deal_count_24h += 1
-                            last_7d_sales += amount
-                            deal_count_7d += 1
-                        except:
-                            continue
-
-    # --- TICKET DATA ---
-    active_tickets = 0
-    stuck_tickets = 0
-    try:
-        ticket_category = discord.utils.get(ctx.guild.categories, id=TICKET_CATEGORY_ID)
-        if ticket_category:
-            for channel in ticket_category.channels:
-                if isinstance(channel, discord.TextChannel):
-                    active_tickets += 1
-    except:
-        pass
-
-    # --- MENTION DATA ---
-    mention_count = 0
-    for channel in ctx.guild.text_channels:
-        try:
-            async for msg in channel.history(after=yesterday, limit=300):
-                if any(user.id == MENTION_TARGET_ID for user in msg.mentions):
-                    mention_count += 1
-        except:
-            continue
-
-    # --- STAFF ONLINE ---
-    staff_online = sum(1 for m in ctx.guild.members if any(r.permissions.kick_members for r in m.roles) and m.status != discord.Status.offline)
-
-    # --- BOT PING ---
-    ping_ms = round(bot.latency * 1000)
-
-    # --- EMBEDS ---
-    page1 = discord.Embed(title="\ud83d\udcc8 Sales & Ticket Overview", color=0x00ff99)
-    page1.add_field(name="Sales Last 24h", value=f"${last_24h_sales}", inline=True)
-    page1.add_field(name="Sales Last 7d", value=f"${last_7d_sales}", inline=True)
-    page1.add_field(name="Deals 24h", value=f"{deal_count_24h}", inline=True)
-    page1.add_field(name="Deals 7d", value=f"{deal_count_7d}", inline=True)
-    page1.add_field(name="Active Tickets", value=f"{active_tickets}", inline=True)
-    page1.set_footer(text=f"Generated {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
-
-    page2 = discord.Embed(title="\ud83d\udc68\u200d\ud83d\udcbc Staff, Roles & Fraud", color=0x3498db)
-    page2.add_field(name="Staff Online", value=f"{staff_online}", inline=True)
-    page2.add_field(name="Pending Role Requests", value=f"(Coming soon)", inline=True)
-    page2.add_field(name="Recent Fraud Flags", value=f"(Coming soon)", inline=True)
-
-    page3 = discord.Embed(title="\ud83d\udcca Community Growth Tracker", color=0x9b59b6)
-    page3.add_field(name="Mentions of Cash (24h)", value=f"{mention_count}", inline=True)
-    page3.add_field(name="New Members 24h", value=f"(Coming soon)", inline=True)
-    page3.add_field(name="Top Invite Booster", value=f"(Coming soon)", inline=True)
-
-    page4 = discord.Embed(title="\ud83d\udcca Bot Health and Emergency", color=0xe67e22)
-    page4.add_field(name="Bot Uptime (Ping)", value=f"{ping_ms}ms", inline=True)
-    page4.add_field(name="Emergency Lock", value=f"Use Panic Button \ud83d\uded1", inline=True)
-
-    embeds = [page1, page2, page3, page4]
-
-    await ctx.send(embed=page1, view=DashboardView(embeds))
-
-# --- END OF FILE ---
-
-# Notes:
-# - Replace TICKET_CATEGORY_ID with your real ticket category ID
-# - Replace channels if needed for deal logging
-# - This is v1.0, will upgrade "coming soon" stats next!
 
 
 @bot.command(name="leaveserver")
@@ -2764,6 +2152,169 @@ async def ticketstats(ctx):
     await ctx.send(embed=embed)
 
 
+@bot.command()
+async def giftcard(ctx, target_amount: str):
+    """Get gift card codes from emails for a specific amount. Owner only."""
+    if str(ctx.author.id) not in OWNER_IDS:
+        # Send warning to user
+        warning_embed = discord.Embed(
+            title="⚠️ Unauthorized Command Usage",
+            description="**WARNING:** Attempting to use restricted commands will result in an immediate blacklist.\nThis incident has been reported to the owner.",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=warning_embed)
+
+        # Notify owner
+        try:
+            owner = await bot.fetch_user(480028928329777163)  # Cash's ID
+            alert_embed = discord.Embed(
+                title="🚨 Unauthorized Command Attempt",
+                description=f"User {ctx.author.mention} ({ctx.author.id}) attempted to use the !giftcard command",
+                color=discord.Color.red(),
+                timestamp=datetime.now()
+            )
+            alert_embed.add_field(name="Channel", value=ctx.channel.name, inline=True)
+            alert_embed.add_field(name="Amount Requested", value=f"${target_amount}", inline=True)
+            await owner.send(embed=alert_embed)
+        except Exception as e:
+            logging.error(f"Failed to notify owner of unauthorized use: {e}")
+        return
+
+    try:
+        target_amount = float(target_amount)
+        found_cards = []
+        total_found = 0
+
+        # Connect to IMAP
+        imap = imaplib.IMAP4_SSL("imap.gmail.com")
+        EMAIL = os.getenv('GMAIL_EMAIL')
+        PASSWORD = os.getenv('GMAIL_PASSWORD')
+        imap.login(EMAIL, PASSWORD)
+        imap.select("inbox")
+
+        # Search for emails from the past 2 weeks
+        date = (datetime.now() - timedelta(weeks=2)).strftime("%d-%b-%Y")
+        _, messages = imap.search(None, f'(SINCE {date})')
+        email_ids = messages[0].split()
+
+        for email_id in email_ids:
+            if total_found >= target_amount:
+                break
+
+            # Load used codes
+            used_codes = set()
+            try:
+                with open('used_codes.txt', 'r') as f:
+                    lines = f.readlines()
+                    for line in lines:
+                        if ',' in line and not line.startswith('#'):
+                            code = line.strip().split(',')[0]
+                            used_codes.add(code)
+            except FileNotFoundError:
+                # Create the file if it doesn't exist
+                with open('used_codes.txt', 'w') as f:
+                    f.write("# Gift Card Codes Log\n# Format: code,amount,date_used\n\n")
+
+            _, msg = imap.fetch(email_id, '(RFC822)')
+            email_body = msg[0][1]
+            email_message = email.message_from_bytes(email_body)
+
+            # Get email content
+            body = ""
+            if email_message.is_multipart():
+                for part in email_message.walk():
+                    if part.get_content_type() == "text/plain":
+                        try:
+                            body = part.get_payload(decode=True).decode()
+                            break
+                        except:
+                            continue
+            else:
+                try:
+                    body = email_message.get_payload(decode=True).decode()
+                except:
+                    continue
+
+            # Look for gift card codes and amounts with numeric pattern
+            amount_pattern = r'\$\s*(\d+(?:\.\d{2})?)\s*(?:USD)?'
+            code_pattern = r'(?:code|card|number)[^\d]*(\d{13,16})'
+
+            amount_matches = re.findall(amount_pattern, body, re.IGNORECASE)
+            code_matches = [m.group(1) for m in re.finditer(code_pattern, body, re.IGNORECASE)]
+
+            if amount_matches and code_matches:
+                for amount_str, code in zip(amount_matches, code_matches):
+                    try:
+                        amount = float(amount_str)
+                        # Add card if it gets us closer to target amount
+                        if code not in used_codes and (total_found + amount <= target_amount or (not found_cards and amount < target_amount * 1.2)):
+                            found_cards.append((amount, code))
+                            total_found += amount
+                            # Add to used codes with proper format
+                            used_codes.add(code)
+                            try:
+                                with open('used_codes.txt', 'a') as f:
+                                    f.write(f"{code},{amount:.2f},{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                                    f.flush()  # Ensure immediate write to disk
+                            except Exception as e:
+                                logging.error(f"Error logging code: {str(e)}")
+                                await ctx.send("⚠️ Warning: Failed to log code usage")
+                    except ValueError:
+                        continue
+
+        imap.close()
+        imap.logout()
+
+        if not found_cards:
+            await ctx.send(f"❌ No suitable gift cards found for ${target_amount}")
+            return
+
+        # Document the codes
+        with open('giftcard_log.txt', 'a') as f:
+            f.write(f"\n=== Gift Cards Retrieved on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
+            f.write(f"Requested Amount: ${target_amount}\n")
+            f.write(f"Retrieved by: {ctx.author.name} ({ctx.author.id})\n")
+            for amount, code in found_cards:
+                f.write(f"${amount:.2f}: {code}\n")
+            f.write("=" * 50 + "\n")
+
+        embed = discord.Embed(
+            title="🎁 Gift Card Codes",
+            description=f"Total Value: ${total_found:.2f}",
+            color=discord.Color.green(),
+            timestamp=datetime.now()
+        )
+
+        code_text = "\n".join([f"${amount}: `{code}`" for amount, code in found_cards])
+        embed.add_field(name="Available Codes", value=code_text, inline=False)
+
+        # Send only in DM
+        try:
+            embed.add_field(name="⚠️ Important", value="Keep these codes private and secure!", inline=False)
+            await ctx.author.send(embed=embed)
+            await ctx.send("✅ Gift card codes have been sent to your DMs!")
+
+            # Notify owner of successful usage
+            try:
+                owner = await bot.fetch_user(480028928329777163)  # Cash's ID
+                owner_embed = discord.Embed(
+                    title="🎁 Gift Card Command Used",
+                    description=f"User {ctx.author.mention} retrieved gift cards",
+                    color=discord.Color.blue(),
+                    timestamp=datetime.now()
+                )
+                owner_embed.add_field(name="Amount Requested", value=f"${target_amount}", inline=True)
+                owner_embed.add_field(name="Total Retrieved", value=f"${total_found:.2f}", inline=True)
+                owner_embed.add_field(name="Number of Codes", value=str(len(found_cards)), inline=True)
+                await owner.send(embed=owner_embed)
+            except Exception as e:
+                logging.error(f"Failed to notify owner of gift card usage: {e}")
+        except discord.Forbidden:
+            await ctx.send("❌ Cannot send DM. Please enable DMs from server members.")
+
+    except Exception as e:
+        logging.error(f"Error in giftcard command: {str(e)}")
+        await ctx.send("❌ An error occurred while processing gift cards.")
 
 @bot.command()
 async def notifycash(ctx, *, message: str):
@@ -2830,46 +2381,6 @@ async def copy_roles(ctx):
         logging.error(f"CopyRoles Error: {error_msg}")
         await ctx.send(error_msg)
         await notify_owner(f"CopyRoles failed: {error_msg}")
-# FastAPI server inside your existing bot
-from fastapi import FastAPI, Request
-import uvicorn
-import threading
-
-api_app = FastAPI()
-
-@api_app.post("/ban_user")
-async def ban_user(request: Request):
-    data = await request.json()
-    user_id = int(data.get("user_id"))
-    reason = data.get("reason", "No reason provided")
-
-    guild = discord.utils.get(bot.guilds)  # If you have only 1 server
-    member = guild.get_member(user_id)
-    if member:
-        await member.ban(reason=reason)
-        return {"status": "success", "detail": f"Banned {user_id}"}
-    else:
-        return {"status": "error", "detail": "User not found"}
-
-@api_app.post("/unban_user")
-async def unban_user(request: Request):
-    data = await request.json()
-    user_id = int(data.get("user_id"))
-
-    guild = discord.utils.get(bot.guilds)
-    bans = await guild.bans()
-    for ban_entry in bans:
-        if ban_entry.user.id == user_id:
-            await guild.unban(ban_entry.user)
-            return {"status": "success", "detail": f"Unbanned {user_id}"}
-
-    return {"status": "error", "detail": "User not banned"}
-
-# Start FastAPI in a background thread
-def run_api():
-    uvicorn.run(api_app, host="127.0.0.1", port=5050)
-
-threading.Thread(target=run_api, daemon=True).start()
 
 @bot.command(name='giverole')
 async def give_role(ctx, role_id: str, user: discord.Member):
@@ -3038,12 +2549,6 @@ async def assign_role(ctx, user: discord.Member):
     except Exception as e:
         await ctx.send(f"❌ Unexpected error: {str(e)}")
         logging.error(f"AssignRole Error: {str(e)}")
-
-
-
-
-
-
 
 @bot.command(name='salesreport')
 async def sales_report(ctx):
@@ -3314,7 +2819,8 @@ async def server_dashboard(ctx):
 
 
 
-# --- CONFIG --- 
+# --- CONFIG ---
+OWNER_IDS = [480028928329777163]  # <- YOUR Discord User ID goes here
 AUDIT_LOG_FILE = "auditlog.jsonl"
 
 # --- Helper to save to audit log ---
