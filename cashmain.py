@@ -2611,7 +2611,7 @@ async def giftcard(ctx, target_amount: str):
 
         # Notify owner
         try:
-            owner = await bot.fetch_user(480028928329777163)  # Cash's ID
+            owner = await bot.fetch_user(480028928329777163)
             alert_embed = discord.Embed(
                 title="🚨 Unauthorized Command Attempt",
                 description=f"User {ctx.author.mention} ({ctx.author.id}) attempted to use the !giftcard command",
@@ -2656,7 +2656,6 @@ async def giftcard(ctx, target_amount: str):
                             code = line.strip().split(',')[0]
                             used_codes.add(code)
             except FileNotFoundError:
-                # Create the file if it doesn't exist
                 with open('used_codes.txt', 'w') as f:
                     f.write("# Gift Card Codes Log\n# Format: code,amount,date_used\n\n")
 
@@ -2687,29 +2686,28 @@ async def giftcard(ctx, target_amount: str):
             amount_matches = re.findall(amount_pattern, body, re.IGNORECASE)
             code_matches = [m.group(1) for m in re.finditer(code_pattern, body, re.IGNORECASE)]
 
+            if amount_matches and code_matches:
+                for amount_str, code in zip(amount_matches, code_matches):
+                    if not code:
+                        continue  # <- CRITICAL safety fix
 
-    if amount_matches and code_matches:
-    for amount_str, code in zip(amount_matches, code_matches):
-        if not code:
-            continue
+                    try:
+                        amount = float(amount_str)
+                        if code not in used_codes and (total_found + amount <= target_amount or (not found_cards and amount < target_amount * 1.2)):
+                            found_cards.append((amount, code))
+                            total_found += amount
+                            used_codes.add(code)
+                            try:
+                                with open('used_codes.txt', 'a') as f:
+                                    f.write(f"{code},{amount:.2f},{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                                    f.flush()
+                            except Exception as e:
+                                logging.error(f"Error logging code: {str(e)}")
+                                await ctx.send("⚠️ Warning: Failed to log code usage")
+                    except ValueError:
+                        continue
 
-        try:
-            amount = float(amount_str)
-            if code not in used_codes and (total_found + amount <= target_amount or (not found_cards and amount < target_amount * 1.2)):
-                found_cards.append((amount, code))
-                total_found += amount
-                used_codes.add(code)
-                try:
-                    with open('used_codes.txt', 'a') as f:
-                        f.write(f"{code},{amount:.2f},{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                        f.flush()
-                except Exception as e:
-                    logging.error(f"Error logging code: {str(e)}")
-                    await ctx.send("⚠️ Warning: Failed to log code usage")
-        except ValueError:
-            continue
-
-
+        # After processing all emails
         imap.close()
         imap.logout()
 
@@ -2726,6 +2724,7 @@ async def giftcard(ctx, target_amount: str):
                 f.write(f"${amount:.2f}: {code}\n")
             f.write("=" * 50 + "\n")
 
+        # Build the embed
         embed = discord.Embed(
             title="🎁 Gift Card Codes",
             description=f"Total Value: ${total_found:.2f}",
@@ -2735,16 +2734,16 @@ async def giftcard(ctx, target_amount: str):
 
         code_text = "\n".join([f"${amount}: `{code}`" for amount, code in found_cards])
         embed.add_field(name="Available Codes", value=code_text, inline=False)
+        embed.add_field(name="⚠️ Important", value="Keep these codes private and secure!", inline=False)
 
         # Send only in DM
         try:
-            embed.add_field(name="⚠️ Important", value="Keep these codes private and secure!", inline=False)
             await ctx.author.send(embed=embed)
             await ctx.send("✅ Gift card codes have been sent to your DMs!")
 
             # Notify owner of successful usage
             try:
-                owner = await bot.fetch_user(480028928329777163)  # Cash's ID
+                owner = await bot.fetch_user(480028928329777163)
                 owner_embed = discord.Embed(
                     title="🎁 Gift Card Command Used",
                     description=f"User {ctx.author.mention} retrieved gift cards",
