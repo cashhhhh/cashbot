@@ -2687,7 +2687,7 @@ async def giftcard(ctx, target_amount: str):
             amount_matches = re.findall(amount_pattern, body, re.IGNORECASE)
             code_matches = [m.group(1) for m in re.finditer(code_pattern, body, re.IGNORECASE)]
 
-            if amount_matches and code_matches:
+if amount_matches and code_matches:
     for amount_str, code in zip(amount_matches, code_matches):
         if not code:
             continue  # <-- THIS one line fix prevents crashing
