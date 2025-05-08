@@ -1268,7 +1268,8 @@ async def profit(ctx):
     EMAIL = os.getenv('GMAIL_EMAIL')
     PASSWORD = os.getenv('GMAIL_PASSWORD')
     imap.login(EMAIL, PASSWORD)
-    imap.select("inbox")
+    imap.select('"[Gmail]/All Mail"')
+
 
     # Search for today's emails specifically (both read and unread)
     today = datetime.now()
