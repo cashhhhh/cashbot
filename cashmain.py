@@ -65,9 +65,7 @@ activity_log = {}
 # Configuration
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 TOKEN_PATH = 'token.pickle'
-OWNER_IDS = [
-    '480028928329777163', '123456789012345678', '987654321098765432',
-    '230803708034678786']  # List of owner IDs
+OWNER_IDS = ['480028928329777163', '123456789012345678', '987654321098765432', '230803708034678786']  # List of owner IDs
 ALERT_CHANNEL_ID = 1223077287457587221
 AWS_INSTANCE_ID = 'i-0c5eefd9c3afd7969'  # Updated instance ID
 # Logging Setup
@@ -3312,8 +3310,7 @@ async def server_dashboard(ctx):
 
 
 
-# --- CONFIG ---
-OWNER_IDS = [480028928329777163]  # <- YOUR Discord User ID goes here
+# --- CONFIG --- 
 AUDIT_LOG_FILE = "auditlog.jsonl"
 
 # --- Helper to save to audit log ---
