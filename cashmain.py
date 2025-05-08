@@ -2692,9 +2692,13 @@ if amount_matches and code_matches:
         if not code:
             continue  # <-- THIS one line fix prevents crashing
 
+    if amount_matches and code_matches:
+    for amount_str, code in zip(amount_matches, code_matches):
+        if not code:
+            continue
+
         try:
             amount = float(amount_str)
-            # Add card if it gets us closer to target amount
             if code not in used_codes and (total_found + amount <= target_amount or (not found_cards and amount < target_amount * 1.2)):
                 found_cards.append((amount, code))
                 total_found += amount
@@ -2702,12 +2706,13 @@ if amount_matches and code_matches:
                 try:
                     with open('used_codes.txt', 'a') as f:
                         f.write(f"{code},{amount:.2f},{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                        f.flush()  # Immediate write
+                        f.flush()
                 except Exception as e:
                     logging.error(f"Error logging code: {str(e)}")
                     await ctx.send("⚠️ Warning: Failed to log code usage")
         except ValueError:
             continue
+
 
         imap.close()
         imap.logout()
