@@ -1838,6 +1838,19 @@ def save_credits():
     with open(CREDITS_FILE, "w") as f:
         json.dump(credits, f, indent=4)
 
+# File to store last payout timestamps
+PAYOUT_FILE = "payouts.json"
+
+if os.path.exists(PAYOUT_FILE):
+    with open(PAYOUT_FILE, "r") as f:
+        payout_data = json.load(f)
+else:
+    payout_data = {}
+
+def save_payouts():
+    with open(PAYOUT_FILE, "w") as f:
+        json.dump(payout_data, f, indent=4)
+
 # Command: !credit add <user_id> <amount>
 @bot.command(name='creditadd')
 @commands.has_permissions(administrator=True)
@@ -2396,50 +2409,65 @@ async def sendmsg(ctx, *, message: str):
 
 @bot.command()
 async def payout(ctx, user: discord.Member):
-    """Show lifetime commission report for a user."""
-    channel = bot.get_channel(1103526122211262565)  # Sales log channel
-    if not channel:
+    """Calculate sales since last payout and automatically send gift cards."""
+    post_channel = bot.get_channel(1103526122211262565)
+    if not post_channel:
         await ctx.send("Sales log channel not found.")
         return
 
-    total_sales = 0
-    sales_count = 0
-    commission_rate = 18.0
+    last_ts = payout_data.get(str(user.id))
+    last_dt = datetime.fromisoformat(last_ts) if last_ts else datetime.min
 
-    async for message in channel.history(limit=None):
-        if message.author == user and "customer:" in message.content.lower():
-            content = message.content.lower()
-            price_matches = re.findall(r'\$(\d+(?:\.\d{2})?)', content)
-            if price_matches:
-                try:
-                    price = float(price_matches[0])
-                    total_sales += price
-                    sales_count += 1
-                except ValueError:
-                    continue
+    sales = []
+    async for message in post_channel.history(limit=None, after=last_dt):
+        if message.author.id != BOT_USER_ID:
+            continue
+        if not message.embeds:
+            continue
+        embed = message.embeds[0]
+        if embed.title != "Approved Deal":
+            continue
+        if user.mention not in (message.content or ""):
+            continue
 
-    commission = total_sales * (commission_rate / 100)
+        amount = None
+        for field in embed.fields:
+            if "Total Price" in field.name:
+                m = re.search(r"(\d+(?:\.\d{1,2})?)", field.value.replace(',', ''))
+                if m:
+                    amount = float(m.group(1))
+                break
+        if amount is not None:
+            sales.append((message.created_at, amount))
 
-    embed = discord.Embed(title="💰 Commission Report",
-                          description=f"for {user.name}",
+    if not sales:
+        await ctx.send("No sales found since last payout.")
+        return
+
+    total_amount = sum(a for _, a in sales)
+
+    # Send gift cards automatically
+    await ctx.invoke(bot.get_command('giftcard'), user, str(total_amount))
+
+    # Build breakdown embed
+    embed = discord.Embed(title="Payout Summary",
                           color=discord.Color.green(),
-                          timestamp=datetime.now())
+                          timestamp=datetime.utcnow())
+    embed.add_field(name="Rep", value=user.mention, inline=False)
+    embed.add_field(name="Sales Count", value=str(len(sales)), inline=True)
+    embed.add_field(name="Total Payout", value=f"${total_amount:.2f}", inline=True)
+    if last_ts:
+        embed.add_field(name="Last Payout", value=datetime.fromisoformat(last_ts).strftime('%Y-%m-%d %I:%M %p'), inline=False)
+    else:
+        embed.add_field(name="Last Payout", value="Never", inline=False)
 
-    embed.add_field(name="Date Range",
-                    value="From Lifetime to Present",
-                    inline=False)
-
-    embed.add_field(name="Total Sales",
-                    value=f"${total_sales:.2f}",
-                    inline=True)
-
-    embed.add_field(name=f"Commission ({commission_rate}%)",
-                    value=f"${commission:.2f}",
-                    inline=True)
-
-    embed.add_field(name="Sales Count", value=str(sales_count), inline=True)
+    breakdown_lines = [f"${amt:.2f} - {ts.strftime('%m/%d %I:%M %p')}" for ts, amt in sales]
+    embed.add_field(name="Deal Breakdown", value="\n".join(breakdown_lines), inline=False)
 
     await ctx.send(embed=embed)
+
+    payout_data[str(user.id)] = datetime.utcnow().isoformat()
+    save_payouts()
 
 
 @bot.command()
@@ -2577,8 +2605,32 @@ async def ticketstats(ctx):
     await ctx.send(embed=embed)
 
 
-@bot.command()
-async def giftcard(ctx, target_amount: str):
+@bot.command(name="giftcard")
+async def giftcard(ctx, *args):
+    """Get gift card codes from emails for a specific amount. Owner only.
+
+    Usage:
+      !giftcard <amount>
+      !giftcard @user <amount>
+
+    When a user is mentioned, the gift card codes will be sent to that user via DM.
+    """
+
+    if len(args) == 1:
+        target_user = ctx.author
+        target_amount = args[0]
+    elif len(args) == 2:
+        member_converter = commands.MemberConverter()
+        try:
+            target_user = await member_converter.convert(ctx, args[0])
+        except commands.BadArgument:
+            await ctx.send("❌ Invalid user specified.")
+            return
+        target_amount = args[1]
+    else:
+        await ctx.send("Usage: !giftcard [@user] <amount>")
+        return
+
     """Get gift card codes from emails for a specific amount. Owner only."""
     if str(ctx.author.id) not in OWNER_IDS:
         # Send warning to user
@@ -2716,8 +2768,8 @@ async def giftcard(ctx, target_amount: str):
         # Send only in DM
         try:
             embed.add_field(name="⚠️ Important", value="Keep these codes private and secure!", inline=False)
-            await ctx.author.send(embed=embed)
-            await ctx.send("✅ Gift card codes have been sent to your DMs!")
+            await target_user.send(embed=embed)
+            await ctx.send(f"✅ Gift card codes have been sent to {target_user.mention}!")
 
             # Notify owner of successful usage
             try:
