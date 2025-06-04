@@ -1030,24 +1030,6 @@ class ConfirmView(discord.ui.View):
         await interaction.response.send_message("Cancelled deal posting.", ephemeral=True)
         self.stop()
 
-# Do not forget to merge this properly under your existing bot instance and event loop.
-import discord
-from discord.ext import commands
-import re
-
-# --- CONFIGURATION ---
-POST_CHANNEL_ID = 1103526122211262565  # Your deals channel
-BOT_USER_ID = 1326838893420613652        # <<< REPLACE with your actual Cash Bot's ID
-
-# Role to commission mapping
-ROLE_COMMISSIONS = {
-    "Trial Salesman": 0,
-    "Novice Salesman": 10,
-    "Jr. Salesman": 20,
-    "Senior Salesman": 25,
-    "Pro Salesman": 30,
-    "Expert Salesman": 33,
-}
 
 @bot.hybrid_command(name="logcommission", description="Calculate a salesman's total deals and commission based on real roles.")
 async def logcommission(ctx, member: discord.Member = None):
