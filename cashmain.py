@@ -21,6 +21,8 @@ from modules.webapp import app
 import discord
 from discord.ext import commands
 from discord.ui import Button, View
+from discord import ButtonStyle
+import discord.ui as ui
 import threading
 import asyncio
 import boto3  # AWS SDK for Python
