@@ -51,6 +51,8 @@ OWNER_IDS = [
     '230803708034678786']  # List of owner IDs
 ALERT_CHANNEL_ID = 1223077287457587221
 AWS_INSTANCE_ID = 'i-0c5eefd9c3afd7969'  # Updated instance ID
+# Channel where gift cards should be distributed
+PAYOUT_CHANNEL_ID = 123456789012345678  # Replace with your #payouts channel ID
 # Logging Setup
 logging.basicConfig(level=logging.INFO)
 # Track all command usages
@@ -2408,8 +2410,13 @@ async def sendmsg(ctx, *, message: str):
 
 
 @bot.command()
-async def payout(ctx, user: discord.Member):
+@commands.has_permissions(administrator=True)
+async def payout(ctx, user: discord.Member = None):
     """Calculate sales since last payout and automatically send gift cards."""
+    if user is None:
+        await ctx.send("Usage: !payout @user")
+        return
+
     post_channel = bot.get_channel(1103526122211262565)
     if not post_channel:
         await ctx.send("Sales log channel not found.")
@@ -2446,8 +2453,26 @@ async def payout(ctx, user: discord.Member):
 
     total_amount = sum(a for _, a in sales)
 
-    # Send gift cards automatically
-    await ctx.invoke(bot.get_command('giftcard'), user, str(total_amount))
+    # Send gift cards automatically in payouts channel
+    payout_channel = bot.get_channel(PAYOUT_CHANNEL_ID)
+    if payout_channel:
+        original_channel = ctx.channel
+        original_author = ctx.author
+        ctx.channel = payout_channel
+        owner_member = ctx.guild.get_member(int(OWNER_IDS[0])) if ctx.guild else None
+        if not owner_member:
+            try:
+                owner_member = await bot.fetch_user(int(OWNER_IDS[0]))
+            except Exception:
+                owner_member = original_author
+        ctx.author = owner_member
+        try:
+            await bot.get_command('giftcard').callback(ctx, user.mention, str(total_amount))
+        finally:
+            ctx.channel = original_channel
+            ctx.author = original_author
+    else:
+        await ctx.send("⚠️ Payout channel not found. Skipping gift card distribution.")
 
     # Build breakdown embed
     embed = discord.Embed(title="Payout Summary",
