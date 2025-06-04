@@ -15,27 +15,23 @@ import imaplib
 import email
 from datetime import datetime, timedelta
 from email.header import decode_header
-from flask import Flask, redirect, request
+from modules.config import DISCORD_TOKEN, load_config, save_config
+from modules.email_utils import load_used_codes, get_emails_imap
+from modules.webapp import app
 import discord
 from discord.ext import commands
 from discord.ui import Button, View
+from discord import ButtonStyle
+import discord.ui as ui
 import threading
 import asyncio
 import boto3  # AWS SDK for Python
 import psutil
 import json
-from dotenv import load_dotenv
-
-load_dotenv() 
-DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 
 
 # Load or create a config file
-if os.path.exists('config.json'):
-    with open('config.json', 'r') as f:
-        config = json.load(f)
-else:
-    config = {}
+config = load_config()
 # At top of file if not already present:
 giftcard_cache = {
     "value": 0.0,
@@ -45,22 +41,6 @@ giftcard_cache = {
     "last_updated": 0
 }
 
-def load_used_codes():
-    used = set()
-    try:
-        with open('used_codes.txt', 'r') as f:
-            for line in f:
-                if ',' in line and not line.startswith('#'):
-                    code = line.strip().split(',')[0]
-                    used.add(code)
-    except FileNotFoundError:
-        pass
-    return used
-
-
-# Add these global variables at the top with other globals
-SALES_ROLE_ID = 1103522760073945168  # Replace with your sales role ID
-ALERT_CHANNEL_ID = 1223077287457587221  # Your existing alert channel
 MIN_ONLINE_THRESHOLD = 5  # Minimum expected active sales members
 activity_log = {}
 # Configuration
@@ -76,12 +56,10 @@ logging.basicConfig(level=logging.INFO)
 # Track all command usages
 command_usage_logs = []  # [(timestamp, guild_id, command_name)]
 dashboard_sessions = {}  # {user_id: {"page": int}}
+# Flask app setup moved to modules.webapp
 
 
 
-# Flask App Setup
-app = Flask(__name__)
-app.secret_key = os.urandom(24)
 
 # Discord Bot Setup
 intents = discord.Intents.all()  # Enable all intents to ensure DM functionality
@@ -228,20 +206,6 @@ def get_emails_imap(guild_id, unread_only=True):
         return []
 
 
-@app.route('/')
-def index():
-    return redirect(request.host_url.rstrip('/') + '/oauth2callback')
-
-
-@app.route('/oauth2callback')
-def oauth2callback():
-    logging.info("Mock OAuth successful, credentials saved.")
-    return redirect(request.host_url.rstrip('/') + '/success')
-
-
-@app.route('/success')
-def success():
-    return "Authentication successful. Now you can test the bot commands in Discord."
 
 
 # Store command usage timestamps
@@ -250,6 +214,20 @@ SPIKE_THRESHOLD = 5  # Number of commands within time window to trigger alert
 TIME_WINDOW = 60  # Time window in seconds
 ALERT_USER_IDS = [480028928329777163,
                   230803708034678786]  # Users to notify on spike
+
+# Default roles allowed to run the checkticket command
+DEFAULT_ALLOWED_ROLE_IDS = [
+    1103522760073945168,
+    1325902622120738866,
+    1361045953296990490,
+    1332736087029710958,
+    1361231253596278794,
+    1319913613389074487,
+    1267783758757757045,
+    1330907621984833536,
+    1338483485782048778,
+    1365072827866288252,
+]
 
 # ✅ Minimal Reposting Loop Injected into Existing Bot
 
@@ -372,10 +350,16 @@ async def checkticket(ctx, amount: float, unread_only: bool = True):
                 logging.error(
                     f"Failed to send traffic alert to {user_id}: {e}")
 
-    allowed_role_ids = [1103522760073945168, 1325902622120738866, 1361045953296990490, 1332736087029710958, 1361231253596278794, 1319913613389074487, 1267783758757757045, 1330907621984833536, 1338483485782048778, 1365072827866288252]
+    # Load server configuration to gather allowed role IDs
+    server_config = config.get(str(ctx.guild.id), {})
+
+    allowed_role_ids = set(DEFAULT_ALLOWED_ROLE_IDS)
+    allowed_role_ids.update(int(rid) for rid in server_config.get('allowed_role_ids', []))
+    if server_config.get('checkticket_role_id'):
+        allowed_role_ids.add(int(server_config['checkticket_role_id']))
+
     is_owner = str(ctx.author.id) in OWNER_IDS
     has_role = any(role.id in allowed_role_ids for role in ctx.author.roles)
-
 
     if not (is_owner or has_role):
         await ctx.send("You do not have permission to use this command.")
@@ -402,8 +386,6 @@ async def checkticket(ctx, amount: float, unread_only: bool = True):
         )
         return
 
-    # Get server-specific configuration
-    server_config = config.get(str(ctx.guild.id))
     if not server_config:
         await ctx.send("This server is not configured. Please use `!setup` first.")
         return
@@ -2295,12 +2277,6 @@ async def checkapplication(ctx, channel_id: int):
                 f"Showing 10 most recent of {len(messages)} applications.")
 
 
-def run_flask():
-    try:
-        logging.info("Starting Flask app...")
-        app.run(host='0.0.0.0', port=5000, use_reloader=False)
-    except Exception as e:
-        logging.error(f"Flask app failed to start: {e}")
 
 
 async def notify_owner(message):
@@ -3148,12 +3124,12 @@ async def setup(ctx):
         'owner_id': owner_id,
         'gmail': gmail,
         'app_password': app_password,
-        'checkticket_role_id': checkticket_role_id
+        'checkticket_role_id': checkticket_role_id,
+        'allowed_role_ids': [int(checkticket_role_id)]
     }
 
     # Save the updated config to the file
-    with open('config.json', 'w') as f:
-        json.dump(config, f, indent=4)
+    save_config(config)
 
     await ctx.send("✅ Server setup complete! The bot will now monitor this server.")
 
@@ -3515,47 +3491,6 @@ async def print_role_ids(ctx):
         await ctx.send("❌ An error occurred while fetching role IDs.")
         logging.error(f"PrintRoleIDs error: {str(e)}")
 
-import discord
-from discord import ui, ButtonStyle
-import json
-
-# Configuration file
-CONFIG_FILE = 'config.json'
-
-# Helper functions for config
-def load_config():
-    """Load the bot configuration from config.json"""
-    try:
-        with open(CONFIG_FILE, 'r') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
-
-def save_config(config):
-    """Save the bot configuration to config.json"""
-    with open(CONFIG_FILE, 'w') as f:
-        json.dump(config, f, indent=4)
-
-import discord
-from discord import ui, ButtonStyle
-import json
-
-# Configuration file
-CONFIG_FILE = 'config.json'
-
-# Helper functions for config
-def load_config():
-    """Load the bot configuration from config.json"""
-    try:
-        with open(CONFIG_FILE, 'r') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
-
-def save_config(config):
-    """Save the bot configuration to config.json"""
-    with open(CONFIG_FILE, 'w') as f:
-        json.dump(config, f, indent=4)
 
 
 # Add to global variables
@@ -4079,25 +4014,16 @@ async def on_command_error(ctx, error):
 # Launch Flask + bot
 if __name__ == '__main__':
     try:
-        from flask_app import run_flask  # make sure your run_flask() is defined in flask_app or same file
+        from modules.webapp import run_flask
 
         flask_thread = threading.Thread(target=run_flask, daemon=True)
         flask_thread.start()
 
-        token = os.getenv("DISCORD_TOKEN")
-        if not token:
+        if not DISCORD_TOKEN:
             raise RuntimeError("DISCORD_TOKEN environment variable not set.")
-        bot.run(token)
-
-    except Exception as e:
-        print(f"❌ Error starting bot: {e}")
-
-        
-        # Run Discord bot
         bot.run(DISCORD_TOKEN)
+
     except KeyboardInterrupt:
         logging.info("Shutting down bot...")
     except Exception as e:
-        logging.error(f"Main thread error: {e}")
-        logging.error(f"Main thread error: {e}")
         logging.error(f"Main thread error: {e}")
