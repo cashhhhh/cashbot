@@ -57,6 +57,19 @@ PAYOUT_CHANNEL_ID = 1362243005435740410  # Hardcoded payouts channel
 logging.basicConfig(level=logging.INFO)
 # Track all command usages
 command_usage_logs = []  # [(timestamp, guild_id, command_name)]
+USAGE_FILE = "usage_stats.json"
+
+if os.path.exists(USAGE_FILE):
+    with open(USAGE_FILE, "r") as f:
+        usage_stats = json.load(f)
+else:
+    usage_stats = {}
+
+
+def save_usage_stats():
+    with open(USAGE_FILE, "w") as f:
+        json.dump(usage_stats, f, indent=4)
+
 dashboard_sessions = {}  # {user_id: {"page": int}}
 # Flask app setup moved to modules.webapp
 
@@ -786,6 +799,8 @@ import re
 async def track_command_usage(ctx):
     now = datetime.utcnow()
     command_usage_logs.append((now, ctx.guild.id if ctx.guild else None, ctx.command.name))
+    usage_stats[ctx.command.name] = usage_stats.get(ctx.command.name, 0) + 1
+    save_usage_stats()
 
     # Purge old logs beyond 5 days
     five_days_ago = now - timedelta(days=5)
@@ -1604,6 +1619,28 @@ async def command_usage(ctx):
 
     embed = discord.Embed(
         title="📊 Command Usage (Last 5 Days)",
+        color=discord.Color.blue(),
+        timestamp=datetime.utcnow()
+    )
+
+    for cmd_name, count in sorted_usage:
+        embed.add_field(name=f"!{cmd_name}", value=f"Used {count} times", inline=False)
+
+    await ctx.send(embed=embed)
+
+
+@bot.command(name="stats")
+@commands.is_owner()
+async def stats(ctx):
+    """Show total command usage across restarts."""
+    if not usage_stats:
+        await ctx.send("No command usage recorded yet.")
+        return
+
+    sorted_usage = sorted(usage_stats.items(), key=lambda x: x[1], reverse=True)
+
+    embed = discord.Embed(
+        title="📊 Command Usage (All Time)",
         color=discord.Color.blue(),
         timestamp=datetime.utcnow()
     )
